@@ -1,0 +1,52 @@
+# tenzoo（点図エディタ）を GitHub Pages に公開する
+# 使い方: リポジトリの Settings → Pages → Source を「GitHub Actions」にする。
+# tenzoo/ 以下を変更して push するか、Actions 画面から手動で実行すると公開される。
+name: tenzoo - GitHub Pages
+
+on:
+  push:
+    paths:
+      - 'tenzoo/**'
+      - '.github/workflows/tenzoo-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: tenzoo-pages
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Unit tests
+        working-directory: tenzoo
+        run: node --test
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare site
+        run: |
+          mkdir -p _site
+          cp -r tenzoo/index.html tenzoo/css tenzoo/js tenzoo/icon.svg tenzoo/manifest.webmanifest tenzoo/sw.js tenzoo/docs _site/
+          touch _site/.nojekyll
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

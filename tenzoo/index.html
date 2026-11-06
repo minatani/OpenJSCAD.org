@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>tenzoo 点図エディタ</title>
+<meta name="description" content="ブラウザで動く点図（触図）エディタ。エーデル形式（.edl）の読み書き、レイヤ、ベクトル図形、多彩な面表現。">
+<meta name="theme-color" content="#1d4ed8">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-select" viewBox="0 0 24 24"><path d="M5 3l14 8-6 1.5L10 19z" fill="currentColor"/></symbol>
+    <symbol id="i-dot" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" fill="currentColor"/></symbol>
+    <symbol id="i-line" viewBox="0 0 24 24"><g fill="currentColor"><circle cx="5" cy="19" r="1.6"/><circle cx="9.7" cy="14.3" r="1.6"/><circle cx="14.3" cy="9.7" r="1.6"/><circle cx="19" cy="5" r="1.6"/></g></symbol>
+    <symbol id="i-polyline" viewBox="0 0 24 24"><path d="M3 18l6-10 6 7 6-11" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="1 3" stroke-linecap="round"/></symbol>
+    <symbol id="i-curve" viewBox="0 0 24 24"><path d="M3 18C7 2 13 22 21 6" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="1 3" stroke-linecap="round"/></symbol>
+    <symbol id="i-freehand" viewBox="0 0 24 24"><path d="M3 15c3-6 5 4 8-2s4-6 6-2 2 4 4 1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-rect" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="1 3" stroke-linecap="round"/></symbol>
+    <symbol id="i-ellipse" viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="8" ry="6" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="1 3" stroke-linecap="round"/></symbol>
+    <symbol id="i-fill" viewBox="0 0 24 24"><rect x="3.5" y="5.5" width="17" height="13" rx="1" fill="none" stroke="currentColor" stroke-width="1.5"/><g fill="currentColor"><circle cx="8" cy="9.5" r="1"/><circle cx="12" cy="9.5" r="1"/><circle cx="16" cy="9.5" r="1"/><circle cx="8" cy="14.5" r="1"/><circle cx="12" cy="14.5" r="1"/><circle cx="16" cy="14.5" r="1"/></g></symbol>
+    <symbol id="i-lasso" viewBox="0 0 24 24"><path d="M6 17c-4-3-2-11 6-11s9 6 5 9-8 2-9 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2 2"/><g fill="currentColor"><circle cx="10" cy="10" r="1"/><circle cx="14" cy="10" r="1"/><circle cx="12" cy="13" r="1"/></g></symbol>
+    <symbol id="i-bucket" viewBox="0 0 24 24"><path d="M5 11l7-7 7 7-7 7z" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M19 14c1.5 2 1.5 3.5 0 4.5s-2.5-1-1.5-2.5z" fill="currentColor"/><g fill="currentColor"><circle cx="12" cy="9" r="1"/><circle cx="9.5" cy="11.5" r="1"/><circle cx="14.5" cy="11.5" r="1"/><circle cx="12" cy="14" r="1"/></g></symbol>
+    <symbol id="i-braille" viewBox="0 0 24 24"><g fill="currentColor"><circle cx="8" cy="6" r="2"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="16" cy="18" r="2"/></g><g fill="none" stroke="currentColor"><circle cx="16" cy="12" r="1.6"/><circle cx="8" cy="18" r="1.6"/></g></symbol>
+    <symbol id="i-eraser" viewBox="0 0 24 24"><path d="M4 16l9-9 6 6-6 6H7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 11l5 5" stroke="currentColor" stroke-width="1.8"/></symbol>
+    <symbol id="i-pan" viewBox="0 0 24 24"><path d="M12 2v20M2 12h20M12 2l-3 3M12 2l3 3M12 22l-3-3M12 22l3-3M2 12l3-3M2 12l3 3M22 12l-3-3M22 12l-3 3" fill="none" stroke="currentColor" stroke-width="1.6"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 7L4 12l5 5M4 12h11a5 5 0 010 10h-2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" transform="translate(0 -3)"/></symbol>
+    <symbol id="i-redo" viewBox="0 0 24 24"><use href="#i-undo" transform="matrix(-1 0 0 1 24 0)"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="3" fill="currentColor"/></symbol>
+    <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="1.8" opacity=".4"/><path d="M4 4l16 16" stroke="currentColor" stroke-width="2"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="1.5" fill="currentColor"/><path d="M8 11V8a4 4 0 018 0v3" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+    <symbol id="i-unlock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 11V8a4 4 0 017.5-2" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+    <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M14 4v16" stroke="currentColor" stroke-width="1.8"/></symbol>
+  </defs>
+</svg>
+
+<div id="app">
+  <header class="topbar">
+    <button class="icon-btn" id="btn-menu" aria-label="メニュー" aria-haspopup="true" aria-expanded="false"><svg><use href="#i-menu"/></svg></button>
+    <h1 class="brand"><span class="logo" aria-hidden="true">⠞</span>tenzoo</h1>
+    <span class="doc-title" id="doc-title" title="図の名前（クリックで変更）" role="button" tabindex="0">無題</span>
+    <div class="spacer"></div>
+    <div class="group">
+      <button class="icon-btn" id="btn-undo" aria-label="元に戻す (Ctrl+Z)" title="元に戻す (Ctrl+Z)"><svg><use href="#i-undo"/></svg></button>
+      <button class="icon-btn" id="btn-redo" aria-label="やり直す (Ctrl+Y)" title="やり直す (Ctrl+Y)"><svg><use href="#i-redo"/></svg></button>
+    </div>
+    <div class="group zoom-group">
+      <button class="icon-btn txt" id="btn-zoom-out" aria-label="縮小" title="縮小 (-)">−</button>
+      <button class="txt-btn" id="btn-zoom-fit" title="用紙全体を表示 (0)">100%</button>
+      <button class="icon-btn txt" id="btn-zoom-in" aria-label="拡大" title="拡大 (+)">＋</button>
+    </div>
+    <select id="sel-display" class="compact" title="表示のしかた" aria-label="表示のしかた">
+      <option value="dots">点で表示</option>
+      <option value="both">点＋図形の線</option>
+      <option value="vector">図形の線だけ</option>
+      <option value="tactile">触る面のイメージ</option>
+    </select>
+    <button class="primary-btn" id="btn-export">書き出し</button>
+    <button class="icon-btn" id="btn-panel" aria-label="パネルの表示切替" title="パネル"><svg><use href="#i-panel"/></svg></button>
+  </header>
+
+  <nav class="menu" id="menu" hidden>
+    <button data-cmd="new">新規作成</button>
+    <button data-cmd="open">開く…（.tenzoo / .edl / 画像 / SVG）</button>
+    <button data-cmd="save">tenzoo 形式で保存</button>
+    <button data-cmd="save-edl">エーデル形式（.edl）で保存</button>
+    <hr>
+    <button data-cmd="import-image">下絵の画像を取り込む…</button>
+    <button data-cmd="import-svg">SVG を図形として取り込む…</button>
+    <hr>
+    <button data-cmd="print">印刷（実寸）…</button>
+    <button data-cmd="help">使い方・ショートカット</button>
+    <button data-cmd="about">tenzoo について</button>
+  </nav>
+
+  <main class="workspace">
+    <div class="toolbar" id="toolbar" role="toolbar" aria-label="道具">
+      <button data-tool="select" title="選択・移動 (V)" aria-label="選択"><svg><use href="#i-select"/></svg><span>選択</span></button>
+      <button data-tool="dot" title="点を打つ (P)" aria-label="点"><svg><use href="#i-dot"/></svg><span>点</span></button>
+      <button data-tool="line" title="直線 (L)" aria-label="直線"><svg><use href="#i-line"/></svg><span>直線</span></button>
+      <button data-tool="polyline" title="折れ線・多角形 (Y)" aria-label="折れ線"><svg><use href="#i-polyline"/></svg><span>折れ線</span></button>
+      <button data-tool="curve" title="曲線 (C)" aria-label="曲線"><svg><use href="#i-curve"/></svg><span>曲線</span></button>
+      <button data-tool="freehand" title="フリーハンド (F)" aria-label="フリーハンド"><svg><use href="#i-freehand"/></svg><span>手描き</span></button>
+      <button data-tool="rect" title="四角形 (R)" aria-label="四角形"><svg><use href="#i-rect"/></svg><span>四角</span></button>
+      <button data-tool="ellipse" title="円・楕円 (E)" aria-label="円"><svg><use href="#i-ellipse"/></svg><span>円</span></button>
+      <span class="tb-sep"></span>
+      <button data-tool="fillrect" title="範囲を塗る：四角 (Shift+R)" aria-label="四角の範囲を塗る"><svg><use href="#i-fill"/></svg><span>面□</span></button>
+      <button data-tool="fillellipse" title="範囲を塗る：楕円 (Shift+E)" aria-label="楕円の範囲を塗る"><svg><use href="#i-fill"/></svg><span>面○</span></button>
+      <button data-tool="filllasso" title="範囲を塗る：投げ縄 (Shift+F)" aria-label="投げ縄の範囲を塗る"><svg><use href="#i-lasso"/></svg><span>投げ縄</span></button>
+      <button data-tool="fillpoly" title="範囲を塗る：多角形 (Shift+Y)" aria-label="多角形の範囲を塗る"><svg><use href="#i-lasso"/></svg><span>面◇</span></button>
+      <button data-tool="bucket" title="囲まれた所を塗る (G)" aria-label="囲まれた所を塗る"><svg><use href="#i-bucket"/></svg><span>塗り</span></button>
+      <span class="tb-sep"></span>
+      <button data-tool="braille" title="点字 (B)" aria-label="点字"><svg><use href="#i-braille"/></svg><span>点字</span></button>
+      <button data-tool="eraser" title="消しゴム (X)" aria-label="消しゴム"><svg><use href="#i-eraser"/></svg><span>消す</span></button>
+      <button data-tool="pan" title="手のひら（表示の移動） (H / Space)" aria-label="表示の移動"><svg><use href="#i-pan"/></svg><span>移動</span></button>
+    </div>
+
+    <div class="canvas-wrap" id="canvas-wrap">
+      <canvas id="canvas" tabindex="0" aria-label="点図の用紙。矢印キーでカーソル移動、スペースで点を打てます（点の道具のとき）。"></canvas>
+      <div class="hint" id="hint" aria-live="polite"></div>
+      <div class="status" id="status"></div>
+    </div>
+
+    <aside class="panel" id="panel" aria-label="設定パネル">
+      <div class="tabs" role="tablist">
+        <button role="tab" data-tab="style" aria-selected="true">図形</button>
+        <button role="tab" data-tab="layers">レイヤ</button>
+        <button role="tab" data-tab="underlay">下絵</button>
+        <button role="tab" data-tab="page">出力</button>
+      </div>
+      <div class="tab-body" id="tab-style" role="tabpanel"></div>
+      <div class="tab-body" id="tab-layers" role="tabpanel" hidden></div>
+      <div class="tab-body" id="tab-underlay" role="tabpanel" hidden></div>
+      <div class="tab-body" id="tab-page" role="tabpanel" hidden></div>
+    </aside>
+  </main>
+</div>
+
+<dialog id="dlg" aria-modal="true">
+  <form method="dialog" id="dlg-form">
+    <h2 id="dlg-title"></h2>
+    <div id="dlg-body"></div>
+    <div class="dlg-actions" id="dlg-actions"></div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<input type="file" id="file-input" hidden>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
