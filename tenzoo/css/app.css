@@ -41,6 +41,16 @@
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
+.sr-only { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.skip-link { position: absolute; left: 8px; top: -60px; z-index: 200; background: var(--accent); color: #fff; padding: 8px 14px; border-radius: 8px; text-decoration: none; }
+.skip-link:focus { top: 8px; }
+.obj-list { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.obj-list li { display: flex; gap: 4px; }
+.obj-list .obj { flex: 1; text-align: left; border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 6px 8px; font-size: 13px; line-height: 1.4; }
+.obj-list .obj[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.layer-head { font-weight: 600; font-size: 13px; margin: 10px 0 4px; }
+.geom textarea { min-height: 56px; font-family: ui-monospace, monospace; font-size: 12.5px; }
+#canvas:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
 html, body { height: 100%; margin: 0; }
 body {
   background: var(--bg);
@@ -134,7 +144,7 @@ select.compact { height: 36px; border: 1px solid var(--border); border-radius: 8
 .tab-body { overflow-y: auto; padding: 12px; flex: 1; }
 
 .sec { margin-bottom: 14px; }
-.sec h3 { font-size: 12px; text-transform: none; color: var(--text-2); margin: 0 0 6px; font-weight: 600; letter-spacing: .04em; }
+.sec h2 { font-size: 12px; text-transform: none; color: var(--text-2); margin: 0 0 6px; font-weight: 600; letter-spacing: .04em; }
 .row { display: flex; align-items: center; gap: 8px; margin: 6px 0; flex-wrap: wrap; }
 .row > label:first-child { min-width: 92px; color: var(--text-2); font-size: 13px; }
 .row input[type="number"], .row select, .row input[type="text"] {

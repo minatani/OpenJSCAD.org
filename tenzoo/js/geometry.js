@@ -105,6 +105,39 @@ export function rectPoints (x, y, w, h, rot = 0) {
   return pts.map(p => apply(m, p))
 }
 
+// ---- 円弧（始点 a・終点 b を通り、点 c が弦からのふくらみを与える。エーデルの .ezi と同じ定義）
+/** 円弧（始点 a・終点 b・ふくらみを与える点 c）の中心・半径・角度。ほぼ直線なら null */
+export function arcGeometry (a, b, c) {
+  const mx = (a[0] + b[0]) / 2; const my = (a[1] + b[1]) / 2
+  const cx = b[0] - a[0]; const cy = b[1] - a[1]
+  const chord = Math.hypot(cx, cy)
+  if (chord < 1e-9) return null
+  const nx = -cy / chord; const ny = cx / chord // 弦の法線
+  const h = (c[0] - mx) * nx + (c[1] - my) * ny
+  if (Math.abs(h) < 1e-6 * Math.max(1, chord)) return null
+  const R = (chord * chord / 4 + h * h) / (2 * Math.abs(h))
+  const k = h - Math.sign(h) * R
+  const ox = mx + nx * k; const oy = my + ny * k
+  const a1 = Math.atan2(a[1] - oy, a[0] - ox)
+  const a2 = Math.atan2(b[1] - oy, b[0] - ox)
+  const apex = Math.atan2(my + ny * h - oy, mx + nx * h - ox)
+  const T = Math.PI * 2
+  const norm = t => ((t % T) + T) % T
+  let d = norm(a2 - a1)
+  if (norm(apex - a1) > d) d -= T // 頂点を通る向きに回る
+  return { ox, oy, R, a1, d }
+}
+
+export function arcPolyline (a, b, c, segLen = 1) {
+  const g = arcGeometry(a, b, c)
+  if (!g) return [a, b]
+  const n = Math.max(8, Math.ceil(Math.abs(g.d) * g.R / segLen))
+  const out = []
+  for (let i = 0; i <= n; i++) { const t = g.a1 + g.d * i / n; out.push([g.ox + g.R * Math.cos(t), g.oy + g.R * Math.sin(t)]) }
+  return out
+}
+
+
 // 折れ線の長さ
 export function polylineLength (pts, closed = false) {
   let L = 0

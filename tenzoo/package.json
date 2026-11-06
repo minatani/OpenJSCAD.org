@@ -1,6 +1,6 @@
 {
   "name": "tenzoo",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "tenzoo - ブラウザで動く点図エディタ（エーデル互換＋α）",
   "type": "module",

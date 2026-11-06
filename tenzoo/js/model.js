@@ -1,7 +1,7 @@
 // 図面データのモデル
 // 図形はすべてベクトル（mm 単位）で持ち、点への変換は出力・表示のときに行う（raster.js）。
 import {
-  catmullRom, ellipsePoints, rectPoints, bboxOfPoints, apply, isSimilarity, mMul, mTranslate,
+  catmullRom, ellipsePoints, rectPoints, bboxOfPoints, apply, isSimilarity, mMul, mTranslate, arcPolyline,
   distToPolyline, pointInRings, unionBox
 } from './geometry.js'
 import { kanaToBraille, cellsToDots, DEFAULT_BRAILLE_METRICS } from './braille.js'
@@ -31,11 +31,11 @@ export function defaultFill () {
 }
 
 export function newLayer (name, i = 0) {
-  return { id: newId('L'), name, visible: true, locked: false, color: LAYER_COLORS[i % LAYER_COLORS.length], objects: [] }
+  return { id: newId('L'), name, visible: true, locked: false, side: 'front', color: LAYER_COLORS[i % LAYER_COLORS.length], objects: [] }
 }
 
-export function newDocument (paper = 'B5') {
-  const p = PAPERS[paper] || PAPERS.B5
+export function newDocument (paper = 'EB5') {
+  const p = PAPERS[paper] || PAPERS.EB5
   const layer = newLayer('レイヤ 1')
   return {
     format: FORMAT,
@@ -62,6 +62,7 @@ export function outlineOf (o) {
     case 'path': return { paths: [o.points], closed: !!o.closed }
     case 'freehand': return { paths: [o.points], closed: !!o.closed }
     case 'curve': return { paths: [catmullRom(o.points, !!o.closed, 10)], closed: !!o.closed }
+    case 'arc': return { paths: [arcPolyline(o.points[0], o.points[1], o.points[2], 0.5)], closed: false }
     case 'rect': return { paths: [rectPoints(o.x, o.y, o.w, o.h, o.rot || 0)], closed: true }
     case 'ellipse': return { paths: [ellipsePoints(o.cx, o.cy, Math.abs(o.rx), Math.abs(o.ry), o.rot || 0)], closed: true }
     case 'mask': return { paths: maskOutline(o), closed: true }
@@ -115,7 +116,7 @@ export function transformObject (o, m) {
   const t = structuredClone(o)
   const tp = q => { const r = apply(m, q); return q.length > 2 ? [r[0], r[1], ...q.slice(2)] : r }
   switch (t.type) {
-    case 'dots': case 'path': case 'freehand': case 'curve':
+    case 'dots': case 'path': case 'freehand': case 'curve': case 'arc':
       t.points = t.points.map(tp)
       return t
     case 'braille': {

@@ -4,6 +4,7 @@ import {
 } from './geometry.js'
 import { outlineOf, brailleDots, maskContains, bboxOf } from './model.js'
 import { generatePattern } from './patterns.js'
+import { edelObjectDots } from './io/ezi.js'
 import { getProfile, mapSize, snapToGrid, SIZE_ORDER } from './profiles.js'
 
 const cache = new WeakMap()
@@ -62,7 +63,7 @@ function computeDots (o, doc) {
     return out
   }
   if (o.type === 'braille') {
-    for (const p of brailleDots(o, doc.settings.braille)) out.push({ x: p[0], y: p[1], size: o.dot || 'L' })
+    for (const p of brailleDots(o, doc.settings.braille)) out.push({ x: p[0], y: p[1], size: o.dot || 'M' })
     return out
   }
   const { paths, closed } = outlineOf(o)
@@ -83,6 +84,11 @@ function computeDots (o, doc) {
         out.push({ x: p[0], y: p[1], size: f.dot || 'S' })
       }
     }
+  }
+  // エーデル由来の線・円弧は、エーデルと同じ方法で点を置く（.edl と同じ点になる）
+  if (o.edel && (o.type === 'path' || o.type === 'arc') && st.stroke !== false && (!st.line || st.line === 'solid')) {
+    for (const q of edelObjectDots(o)) out.push({ x: q[0], y: q[1], size: st.dot || 'M' })
+    return out
   }
   // 輪郭線
   if (st.stroke !== false) {
@@ -115,15 +121,16 @@ export function documentDots (doc, opts = {}) {
       for (const d of objectDots(o, doc)) {
         let { x, y } = d
         if (snap) [x, y] = snapToGrid(profile, x, y)
-        all.push({ x, y, size: mapSize(profile, d.size), layer: layer.id })
+        all.push({ x, y, size: mapSize(profile, d.size), layer: layer.id, side: layer.side === 'back' ? 'back' : 'front' })
       }
     }
   }
   const minDist = doc.settings.minDist != null ? +doc.settings.minDist : profile.minDist
   if (opts.merge === false || !(minDist > 0)) return all
-  // 大きい点を優先して残す
+  // 大きい点を優先して残す（表と裏は別々に）
   all.sort((a, b) => SIZE_ORDER[b.size] - SIZE_ORDER[a.size])
-  return mergeClose(all, minDist, () => true)
+  const front = all.filter(d => d.side === 'front'); const back = all.filter(d => d.side === 'back')
+  return [...mergeClose(front, minDist, () => true), ...mergeClose(back, minDist, () => true)]
 }
 
 export function dotsBox (dots) {

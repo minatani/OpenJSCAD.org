@@ -1,9 +1,9 @@
 // オフライン用のサービスワーカー：アプリのファイルを保存しておき、ネットにつながらなくても起動できるようにする
-const VERSION = 'tenzoo-v0.1.0'
+const VERSION = 'tenzoo-v0.2.0'
 const FILES = [
   './', 'index.html', 'css/app.css', 'manifest.webmanifest', 'icon.svg',
   'js/app.js', 'js/store.js', 'js/view.js', 'js/tools.js', 'js/model.js', 'js/geometry.js', 'js/raster.js',
-  'js/patterns.js', 'js/profiles.js', 'js/braille.js', 'js/io/edl.js', 'js/io/export.js', 'js/io/import.js'
+  'js/patterns.js', 'js/profiles.js', 'js/braille.js', 'js/a11y.js', 'js/io/edl.js', 'js/io/ezi.js', 'js/io/export.js', 'js/io/import.js'
 ]
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(FILES)).then(() => self.skipWaiting()))

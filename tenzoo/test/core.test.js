@@ -2,7 +2,8 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { kanaToBraille, brailleToKana, bitsToUnicode, dotsToBits } from '../js/braille.js'
-import { parseEDL, writeEDL, EDL_UNIT_X, EDL_UNIT_Y } from '../js/io/edl.js'
+import { parseEDL, writeEDL, writeEDLPages, EDL_UNIT_X, EDL_UNIT_Y } from '../js/io/edl.js'
+import { parseEZI, elementDots, arcGeometry, eziToObjects, objectsToEZI, parseSEBK, writeSEBK, combineEdlEzi, EMPTY_FUMI } from '../js/io/ezi.js'
 import { samplePolyline, pointInRings, mergeClose, dashPolyline, mRotate, apply } from '../js/geometry.js'
 import { PATTERN_IDS, generatePattern } from '../js/patterns.js'
 import { newDocument, transformObject, outlineOf, maskFromGrid, maskContains, maskOutline, normalizeDocument, defaultStyle, defaultFill } from '../js/model.js'
@@ -41,15 +42,43 @@ test('点字：簡易逆変換', () => {
 })
 
 test('エーデル：読み書きで同じ文字列に戻る', () => {
-  const src = 'EDELB5,39,46\r\n2ASAMBWAMCLAM\r\n1ADATAJAT'
-  // 各行の座標は4文字単位。2行目は3点、3行目は2点
-  const e = parseEDL(src.replace('2ASAMBWAMCLAM', '2ASAMBWAMCLAM'))
+  // 解析資料の例：NMAG → x=377, y=33
+  const src = 'EDELB5,33,46\r\n2NMAGASAM\r\n1ADATAJAT\r\n3LHAT'
+  const e = parseEDL(src)
   assert.equal(e.paper, 'B5')
   assert.equal(e.dots.length, 5)
-  assert.deepEqual(e.dots[0], { x: 45 * EDL_UNIT_X, y: 39 * EDL_UNIT_Y, size: 'L', ux: 45, uy: 39, kind: '2' })
-  // mm の座標だけから書き戻しても同じになる
+  assert.deepEqual(e.dots[0], { x: 377 * EDL_UNIT_X, y: 33 * EDL_UNIT_Y, size: 'M', side: 'front', ux: 377, uy: 33, kind: '2' })
+  assert.equal(e.dots[2].size, 'S') // 1 = 小
+  assert.equal(e.dots[4].size, 'L') // 3 = 大
+  // mm の座標だけから書き戻しても同じになる（最後の行のあとに改行はない）
   const { text } = writeEDL(e.dots.map(d => ({ x: d.x, y: d.y, size: d.size })))
   assert.equal(text, src)
+})
+
+test('エーデル：1目盛りは ESA721 の1ステップ（1マス=15、1行=33）', () => {
+  assert.ok(Math.abs(15 * EDL_UNIT_X - 5.181) < 0.001)
+  assert.ok(Math.abs(33 * EDL_UNIT_Y - 10.4775) < 0.001)
+})
+
+test('エーデル：A4 の上位文字・複数ページ・両面の拡張', () => {
+  // y=743 = 28*26+15 → 上位 '\'
+  const e = parseEDL('EDELA4,743,743\r\n2@K\\O')
+  assert.equal(e.paper, 'A4')
+  assert.equal(e.dots[0].uy, 743)
+  const w = writeEDL([{ ux: 11, uy: 743, size: 'M' }], { paper: 'A4' })
+  assert.equal(w.text, 'EDELA4,743,743\r\n2@K\\O')
+  // B5 の範囲（x ≦ 479）を超える点は省く
+  assert.equal(writeEDL([{ ux: 480, uy: 10, size: 'M' }, { ux: 479, uy: 10, size: 'M' }]).count, 1)
+  // 複数ページ
+  const m = parseEDL('EDELB5,1,1\r\n2@A@A\r\nEDELB5,2,2\r\n1@B@B')
+  assert.equal(m.pages.length, 2)
+  assert.equal(m.pages[1].dots[0].size, 'S')
+  const mp = writeEDLPages([{ dots: [{ ux: 1, uy: 1, size: 'M' }] }, { dots: [{ ux: 2, uy: 2, size: 'S' }] }])
+  assert.equal(mp.text, 'EDELB5,1,1\r\n2@A@A\r\nEDELB5,2,2\r\n1@B@B')
+  // 両面：4～6 は裏面の 1～3
+  const d = parseEDL('EDELB5,5,5\r\n5@E@E')
+  assert.deepEqual([d.dots[0].side, d.dots[0].size], ['back', 'M'])
+  assert.equal(writeEDL([{ ux: 5, uy: 5, size: 'M', side: 'back' }]).text, 'EDELB5,5,5\r\n5@E@E')
 })
 
 test('エーデル：並べ替え・重複除去・範囲外', () => {
@@ -59,13 +88,68 @@ test('エーデル：並べ替え・重複除去・範囲外', () => {
   ]
   const { text, warnings } = writeEDL(dots)
   const lines = text.split('\r\n')
-  assert.match(lines[0], /^EDELB5,3,58$/)
+  assert.match(lines[0], /^EDELB5,3,63$/)
   assert.equal(lines.length, 3)
-  assert.equal(lines[1][0], '2')
-  assert.equal(lines[2][0], '3')
+  assert.equal(lines[1][0], '3')
+  assert.equal(lines[2][0], '1')
   assert.equal((lines[2].length - 1) / 4, 2)
   assert.equal(warnings.length, 1)
   assert.throws(() => parseEDL('hello'))
+})
+
+test('.ezi：線分と円弧の点の置き方', () => {
+  const els = parseEZI('2\r\n101 2 7 307 63 377 33 0 0 0 0 \r\n102 1 6 100 100 160 100 130 80 0 0 \r\n')
+  assert.equal(els.length, 2)
+  // 長さ 76.2、間隔 7 → n = 11 等分、12 点（両端を含む）
+  const d = elementDots(els[0])
+  assert.equal(d.length, 12)
+  assert.deepEqual(d[0], [307, 63]); assert.deepEqual(d[11], [377, 33])
+  // 円弧：弦 60、ふくらみ h=20 → 半径 (900+400)/40 = 32.5。すべての点が円上
+  const g = arcGeometry(...els[1].pts)
+  assert.ok(Math.abs(g.R - 32.5) < 1e-9)
+  for (const [x, y] of elementDots(els[1])) assert.ok(Math.abs(Math.hypot(x - g.ox, y - g.oy) - g.R) <= 1)
+  const ad = elementDots(els[1])
+  assert.deepEqual(ad[0], [100, 100]); assert.deepEqual(ad[ad.length - 1], [160, 100])
+  assert.ok(ad.some(([x, y]) => Math.hypot(x - 130, y - 80) <= 3.5), '頂点の近くを通る（点の間隔 6 の半分ほど）')
+  assert.ok(ad.every(([, y]) => y <= 100), '弦より上にふくらむ')
+})
+
+test('.ezi：図形にして書き戻す・tenzoo の点がエーデルの点と一致', () => {
+  const src = '3\r\n101 2 7 10 10 80 10 0 0 0 0 \r\n101 2 7 80 10 80 60 0 0 0 0 \r\n102 3 5 100 100 160 100 130 80 0 0 \r\n'
+  const els = parseEZI(src)
+  const objs = eziToObjects(els)
+  assert.equal(objs.length, 2) // つながる線分は折れ線1本に
+  assert.equal(objs[0].object.points.length, 3)
+  assert.equal(objs[1].object.type, 'arc')
+  const doc = newDocument()
+  // raster の点（mm）が .ezi から求めた目盛りの点と一致する
+  const want = new Set([...elementDots(els[0]), ...elementDots(els[1])].map(([x, y]) => x + ',' + y))
+  const got = objectDots(objs[0].object, doc).map(d => Math.round(d.x / EDL_UNIT_X) + ',' + Math.round(d.y / EDL_UNIT_Y))
+  assert.deepEqual(new Set(got), want)
+  assert.ok(objs[1].object.style.dot === 'L')
+  const back = objectsToEZI(objs.map(o => o.object))
+  assert.equal(back.text, src)
+})
+
+test('.sebk：入れ物の読み書きと .edl との組み合わせ', () => {
+  const ezi = '1\r\n101 2 7 10 10 80 10 0 0 0 0 \r\n'
+  const lineDots = elementDots(parseEZI(ezi)[0]).map(([ux, uy]) => ({ ux, uy, size: 'M' }))
+  // .edl：線の点 + 手で打った大点 1 個
+  const edl = writeEDL([...lineDots, { ux: 200, uy: 200, size: 'L' }]).text
+  const sebk = writeSEBK(edl, ezi)
+  assert.ok(sebk.startsWith(`Zu_1.edl,${edl.length} EDEL`))
+  assert.equal(EMPTY_FUMI.length, 810)
+  const entries = parseSEBK(sebk)
+  assert.equal(entries[0].body, edl)
+  assert.equal(entries[1].body, ezi)
+  const c = combineEdlEzi(entries[0].body, entries[1].body)
+  assert.equal(c.stats.shown, 1)
+  assert.equal(c.stats.restDots, 1) // 手で打った点だけが点のレイヤに
+  assert.equal(c.layers.length, 2)
+  // .edl に無い線は隠したレイヤへ
+  const c2 = combineEdlEzi(writeEDL([{ ux: 300, uy: 300, size: 'L' }]).text, ezi)
+  assert.equal(c2.stats.hidden, 1)
+  assert.equal(c2.layers.find(l => !l.visible).objects.length, 1)
 })
 
 test('幾何：角を残して線に点を置く', () => {

@@ -191,4 +191,5 @@ export function cellsToDots (cells, x0, y0, metrics) {
   return dots
 }
 
-export const DEFAULT_BRAILLE_METRICS = { dotPitchX: 2.4, dotPitchY: 2.4, cellPitch: 6.0, linePitch: 10.0 }
+// 既定の寸法は ESA721 の点字に合わせる（1マス=15目盛り、1行=33目盛り、マスの中の点の間隔 6～7目盛り）
+export const DEFAULT_BRAILLE_METRICS = { dotPitchX: 2.07, dotPitchY: 2.06, cellPitch: 5.18, linePitch: 10.48 }

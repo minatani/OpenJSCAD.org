@@ -15,12 +15,12 @@ export const PROFILES = {
     id: 'esa721',
     label: 'ESA721（エーデル互換）',
     kind: 'emboss',
-    // エーデルの座標の1目盛り。実物ファイルの解析による推定値（x 0.4mm, y ≒0.343mm）
-    grid: { dx: 0.4, dy: 2.4 / 7, ox: 0, oy: 0 },
-    maxUnits: { x: 701, y: 701 },
+    // ESA721 のプロッタの1ステップ＝エーデル（.edl）座標の1目盛り。
+    // 横（edl の x、ESA721 の Y 軸）0.3454mm、縦（edl の y、ESA721 の X 軸）0.3175mm。1マス=15、1行=33
+    grid: { dx: 0.3454, dy: 0.3175, ox: 0, oy: 0 },
     sizes: { L: true, M: true, S: true },
     minDist: 1.0,
-    note: '3種類の点（大・中・小）。座標はエーデル（.edl）の格子に合わせます。'
+    note: '3種類の点（小・中・大）。座標はエーデル（.edl）の格子（ESA721 の1ステップ）に合わせます。'
   },
   generic25: {
     id: 'generic25',
@@ -77,12 +77,23 @@ export function snapToGrid (profile, x, y) {
   return [g.ox + Math.round((x - g.ox) / g.dx) * g.dx, g.oy + Math.round((y - g.oy) / g.dy) * g.dy]
 }
 
+// 用紙。EB5 / EA4 はエーデル・ESA721 の「B5」「A4」（点字用紙。ISO の B5・A4 とは別）
+// area: ESA721 で点を打てる範囲（edl 座標の目盛り）。B5 は 32マス×22行、A4 は 40マス×24行
 export const PAPERS = {
+  EB5: { label: '点字用紙 B5（8×10インチ・32マス×22行）', w: 203.2, h: 254, edl: 'B5', area: { x: 479, y: 726 } },
+  EA4: { label: '点字用紙 A4（10×11インチ・40マス×24行）', w: 254, h: 279.4, edl: 'A4', area: { x: 599, y: 790 } },
   B5: { label: 'B5 縦 (182×257)', w: 182, h: 257 },
   B5L: { label: 'B5 横 (257×182)', w: 257, h: 182 },
   A4: { label: 'A4 縦 (210×297)', w: 210, h: 297 },
   A4L: { label: 'A4 横 (297×210)', w: 297, h: 210 },
   A3: { label: 'A3 縦 (297×420)', w: 297, h: 420 },
-  TENJI: { label: '点字用紙 (約 254×279)', w: 254, h: 279 },
   CUSTOM: { label: 'ユーザー定義', w: 200, h: 200 }
+}
+
+// エーデル形式で書き出すときの用紙名と点を打てる範囲
+export function edlPaperOf (page) {
+  const p = PAPERS[page && page.paper]
+  if (p && p.edl) return { name: p.edl, area: p.area }
+  // 幅で判断（A4 の幅 600 目盛り ≒ 207mm を超えるなら A4）
+  return page && page.width > 203.3 ? { name: 'A4', area: PAPERS.EA4.area } : { name: 'B5', area: PAPERS.EB5.area }
 }

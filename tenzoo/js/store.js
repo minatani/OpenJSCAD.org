@@ -11,7 +11,7 @@ export const on = fn => { listeners.add(fn); return () => listeners.delete(fn) }
 const emit = (what) => { for (const fn of listeners) fn(what) }
 
 export const state = {
-  doc: newDocument('B5'),
+  doc: newDocument('EB5'),
   selection: new Set(),
   tool: 'select',
   // 新しく描く図形のスタイル（何も選んでいないときにパネルで変える）

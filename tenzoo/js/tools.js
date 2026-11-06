@@ -10,6 +10,7 @@ import { hitTest, outlineOf, maskFromGrid, defaultStyle, activeLayer, transformO
 import { simplify, mTranslate, mScale, mRotate, dist } from './geometry.js'
 import { objectDots } from './raster.js'
 import { snapToGrid, getProfile } from './profiles.js'
+import { typeName, describeObject, describeAt } from './a11y.js'
 
 let ui = null // app.js から渡される UI の関数（点字の入力ダイアログなど）
 export function initTools (uiApi) { ui = uiApi; bindPointer() }
@@ -28,6 +29,7 @@ export const TOOL_HINTS = {
   filllasso: '囲むようにドラッグした範囲を塗ります。',
   fillpoly: 'クリックで範囲の頂点を置き、ダブルクリックか Enter で塗ります。',
   bucket: '線で囲まれた所をクリックすると、その内側を塗ります。',
+  arc: '始点・終点・ふくらみの位置の順に3回クリックすると円弧になります。',
   braille: '点字を置きたい場所をクリックします。既存の点字をクリックすると編集します。',
   eraser: 'ドラッグで点を消します（図形は点に変換してから消します）。',
   pan: 'ドラッグで表示を動かします。ピンチ・ホイールで拡大縮小。'
@@ -73,6 +75,7 @@ function hitObject (p) {
 // ---- 各道具の振る舞い
 let drag = null // ドラッグ中の情報
 let poly = null // 折れ線・曲線の描きかけ
+let kbAnchor = null // キーボードで置いた始点（直線・四角・円など）
 
 function preview (o) {
   // 描きかけの図形を点で見せる
@@ -95,6 +98,7 @@ function finishShape (o) {
   if (obj) {
     commit()
     if (ui.afterCreate) ui.afterCreate(obj)
+    ui.announce(`${typeName(obj)}を追加しました。点 ${objectDots(obj, state.doc).length} 個。`)
   }
   requestRender()
 }
@@ -283,11 +287,17 @@ const tools = {
     }
   },
 
-  ...Object.fromEntries(['polyline', 'curve', 'fillpoly'].map(t => [t, {
+  ...Object.fromEntries(['polyline', 'curve', 'fillpoly', 'arc'].map(t => [t, {
     down (p, e) {
       p = snapPt(p)
       if (!poly) { poly = { tool: t, pts: [p] }; polyPreview(p); return }
       const last = poly.pts[poly.pts.length - 1]
+      if (t === 'arc') { // 始点・終点・ふくらみの3点で決まる
+        if (dist(p, last) > 0.2 || poly.pts.length === 2) poly.pts.push(p)
+        if (poly.pts.length === 3) finishPoly(false)
+        else polyPreview(p)
+        return
+      }
       if (e.shiftKey) p = angleSnap(last, p)
       // 始点の近くをクリック → 閉じて終了
       if (poly.pts.length >= 3 && dist(p, poly.pts[0]) < tol() * 1.5) { finishPoly(true); return }
@@ -300,7 +310,7 @@ const tools = {
       if (e.shiftKey) p = angleSnap(poly.pts[poly.pts.length - 1], p)
       polyPreview(p)
     },
-    dbl () { if (poly) finishPoly(t === 'fillpoly') }
+    dbl () { if (poly && t !== 'arc') finishPoly(t === 'fillpoly') }
   }])),
 
   bucket: {
@@ -328,7 +338,9 @@ const tools = {
 function polyPreview (cur) {
   const t = poly.tool
   const pts = [...poly.pts, cur]
-  const o = t === 'curve'
+  const o = t === 'arc'
+    ? (pts.length >= 3 ? { type: 'arc', points: pts.slice(0, 3), style: drawStyle() } : { type: 'path', points: pts, closed: false, style: drawStyle() })
+    : t === 'curve'
     ? { type: 'curve', points: pts, closed: false, style: drawStyle() }
     : { type: 'path', points: pts, closed: t === 'fillpoly', style: t === 'fillpoly' ? fillShapeStyle() : drawStyle() }
   preview(o)
@@ -343,17 +355,21 @@ export function finishPoly (closed) {
   if (!poly) return
   const t = poly.tool
   let pts = poly.pts
-  // ダブルクリックで同じ点が二重になっているのを除く
-  pts = pts.filter((q, i) => i === 0 || dist(q, pts[i - 1]) > 0.2)
+  // ダブルクリックで同じ点が二重になっているのを除く（円弧は3点をそのまま使う）
+  if (t !== 'arc') pts = pts.filter((q, i) => i === 0 || dist(q, pts[i - 1]) > 0.2)
   poly = null
   overlay.draw = null
+  if (t === 'arc') {
+    if (poly === null && pts.length < 3) { requestRender(); return }
+  }
   if (pts.length < 2 || (t === 'fillpoly' && pts.length < 3)) { requestRender(); return }
-  if (t === 'curve') finishShape({ type: 'curve', points: pts, closed, style: drawStyle() })
+  if (t === 'arc') finishShape(pts.length >= 3 ? { type: 'arc', points: pts.slice(0, 3), style: drawStyle() } : { type: 'path', points: pts.slice(0, 2), closed: false, style: drawStyle() })
+  else if (t === 'curve') finishShape({ type: 'curve', points: pts, closed, style: drawStyle() })
   else if (t === 'fillpoly') finishShape({ type: 'path', points: pts, closed: true, style: fillShapeStyle() })
   else finishShape({ type: 'path', points: pts, closed, style: drawStyle() })
 }
 export function cancelTool () {
-  poly = null; drag = null; overlay.draw = null; requestRender()
+  poly = null; drag = null; kbAnchor = null; overlay.draw = null; requestRender()
 }
 export const isDrawingPoly = () => !!poly
 
@@ -525,6 +541,8 @@ function bindPointer () {
       return
     }
     if (e.button !== 0 && e.pointerType === 'mouse') return
+    if (state.tool !== 'dot') state.cursor = null // マウス・タッチを使ったらキーボードのカーソルは消す
+    kbAnchor = null
     const p = toDoc(...sp)
     const t = tools[state.tool]
     // ダブルクリック／ダブルタップ
@@ -587,42 +605,121 @@ function bindPointer () {
   canvas.addEventListener('contextmenu', e => e.preventDefault())
 }
 
-// ---- キーボードでの点打ち（エーデルのようにカーソルで描く）
-export function keyboardCursor (key, shift) {
-  const profile = getProfile(state.doc.profile)
-  const step = shift ? 5 : (profile.grid ? Math.max(profile.grid.dx, profile.grid.dy) * 3 : 1)
-  if (!state.cursor) state.cursor = [state.doc.page.width / 2, state.doc.page.height / 2]
+// ---- キーボードで描く（エーデルのようにカーソルを動かして点・頂点を置く）
+// 矢印: 1mm（Shift 5mm、Ctrl 10mm。方眼に吸着するときは方眼の間隔）
+export function keyboardCursor (key, mods = {}) {
+  const step = mods.ctrl ? 10 : mods.shift ? 5 : (state.snapGrid ? state.gridSize : 1)
+  if (!state.cursor) state.cursor = [Math.round(state.doc.page.width / 2), Math.round(state.doc.page.height / 2)]
   const c = state.cursor
   if (key === 'ArrowLeft') c[0] -= step
   else if (key === 'ArrowRight') c[0] += step
   else if (key === 'ArrowUp') c[1] -= step
   else if (key === 'ArrowDown') c[1] += step
-  c[0] = Math.max(0, Math.min(state.doc.page.width, c[0])); c[1] = Math.max(0, Math.min(state.doc.page.height, c[1]))
+  c[0] = Math.round(Math.max(0, Math.min(state.doc.page.width, c[0])) * 100) / 100
+  c[1] = Math.round(Math.max(0, Math.min(state.doc.page.height, c[1])) * 100) / 100
+  keyboardPreview()
   ui.status(c)
+  ui.cursorMoved(c)
   requestRender()
+}
+export function setCursor (p) {
+  state.cursor = [p[0], p[1]]
+  keyboardPreview()
+  ui.status(state.cursor)
+  requestRender()
+}
+function keyboardPreview () {
+  const c = state.cursor
+  if (!c) return
+  if (kbAnchor) preview(shapeFromDrag(state.tool, kbAnchor, c, false))
+  else if (poly) polyPreview(c)
+}
+export const cursorInfo = () => state.cursor ? describeAt(state.doc, state.cursor, (o, p) => hitTest(o, p, 1.0, state.doc)) : ''
+
+const TWO_POINT = ['line', 'rect', 'ellipse', 'fillrect', 'fillellipse']
+/**
+ * カーソルの位置で道具を使う。
+ * mode: 'put'（Enter・Space）| 'finish'（Shift+Enter：開いたまま終える）| 'close'（Ctrl+Enter：閉じて終える）| 'back'（Backspace）
+ */
+export function keyboardAction (mode = 'put') {
+  if (!state.cursor) state.cursor = [Math.round(state.doc.page.width / 2), Math.round(state.doc.page.height / 2)]
+  const c = state.cursor.slice()
+  const t = state.tool
+  const say = ui.announce
+  if (t === 'dot') { keyboardDot(mode === 'back'); return }
+  if (TWO_POINT.includes(t)) {
+    if (mode === 'back') { kbAnchor = null; overlay.draw = null; requestRender(); say('始点を取り消しました。'); return }
+    if (!kbAnchor) { kbAnchor = c; preview(shapeFromDrag(t, c, c, false)); say(`始点 x ${c[0]} y ${c[1]}。終点へ動かして Enter。`); return }
+    const o = shapeFromDrag(t, kbAnchor, c, false)
+    kbAnchor = null
+    const small = o.type === 'path' ? dist(o.points[0], o.points[1]) < 0.5 : (o.w != null ? Math.min(o.w, o.h) : Math.min(o.rx, o.ry) * 2) < 0.5
+    if (small) { overlay.draw = null; requestRender(); say('始点と同じ位置なので取り消しました。'); return }
+    finishShape(o)
+    return
+  }
+  if (['polyline', 'curve', 'fillpoly', 'arc'].includes(t)) {
+    if (mode === 'finish' || mode === 'close') {
+      if (!poly) { say('描きかけの線はありません。'); return }
+      finishPoly(mode === 'close' || t === 'fillpoly')
+      return
+    }
+    if (mode === 'back') {
+      if (poly && poly.pts.length > 1) { poly.pts.pop(); keyboardPreview(); say(`頂点を1つ取り消しました。残り ${poly.pts.length} 個。`) } else { cancelTool(); say('取り消しました。') }
+      return
+    }
+    tools[t].down(c, { shiftKey: false })
+    if (poly) {
+      const n = poly.pts.length
+      say(t === 'arc'
+        ? ['', '始点を置きました。終点へ動かして Enter。', '終点を置きました。ふくらみの位置へ動かして Enter。'][n]
+        : `頂点 ${n} 個目。Shift+Enter で終える${t === 'fillpoly' ? '' : '、Ctrl+Enter で閉じて終える'}。`)
+    }
+    return
+  }
+  if (t === 'bucket') { bucketFill(c); return }
+  if (t === 'braille') { tools.braille.down(c); return }
+  if (t === 'eraser') {
+    drag = { changed: false }; erase(c)
+    if (drag.changed) { commit(); say('消しました。') } else say('消す点がありません。')
+    drag = null
+    return
+  }
+  if (t === 'select') {
+    const hit = hitObject(c)
+    if (!hit) { say('ここには図形がありません。'); return }
+    if (mode !== 'finish') state.selection.clear()
+    state.selection.add(hit.object.id)
+    state.doc.activeLayer = hit.layer.id
+    notify('selection')
+    say(`選択：${describeObject(hit.object, state.doc)}`)
+  }
 }
 export function keyboardDot (remove = false) {
   if (!state.cursor) return
   const c = snapToGrid(getProfile(state.doc.profile), state.cursor[0], state.cursor[1])
+  const layer = activeLayer(state.doc)
   if (remove) {
-    const layer = activeLayer(state.doc)
+    let n = 0
     for (const o of layer.objects) {
       if (o.type !== 'dots') continue
       const keep = o.points.filter(q => Math.hypot(q[0] - c[0], q[1] - c[1]) > 0.8)
+      n += o.points.length - keep.length
       if (keep.length !== o.points.length) replaceObject(o.id, { ...o, points: keep })
     }
     layer.objects = layer.objects.filter(o => o.type !== 'dots' || o.points.length)
     commit()
+    ui.announce(n ? `点を ${n} 個消しました。` : 'ここに点はありません。')
     return
   }
-  const layer = activeLayer(state.doc)
   const last = layer.objects[layer.objects.length - 1]
   // 続けて打つ点は同じ図形にまとめる
   if (last && last.type === 'dots' && last.kbd && !layer.locked) {
     replaceObject(last.id, { ...last, points: [...last.points, [c[0], c[1], state.dotSize]] })
     commit()
+    ui.announce('点')
     return
   }
   const obj = addObject({ type: 'dots', kbd: true, points: [[c[0], c[1], state.dotSize]], style: { ...defaultStyle(), dot: state.dotSize } })
-  if (obj) commit()
+  if (obj) { commit(); ui.announce('点') }
 }
+export const hasKeyboardDraft = () => !!(kbAnchor || poly)

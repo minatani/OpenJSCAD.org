@@ -18,6 +18,7 @@
     <symbol id="i-line" viewBox="0 0 24 24"><g fill="currentColor"><circle cx="5" cy="19" r="1.6"/><circle cx="9.7" cy="14.3" r="1.6"/><circle cx="14.3" cy="9.7" r="1.6"/><circle cx="19" cy="5" r="1.6"/></g></symbol>
     <symbol id="i-polyline" viewBox="0 0 24 24"><path d="M3 18l6-10 6 7 6-11" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="1 3" stroke-linecap="round"/></symbol>
     <symbol id="i-curve" viewBox="0 0 24 24"><path d="M3 18C7 2 13 22 21 6" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="1 3" stroke-linecap="round"/></symbol>
+    <symbol id="i-arc" viewBox="0 0 24 24"><path d="M4 18A9 9 0 0 1 20 18" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="1 3" stroke-linecap="round"/></symbol>
     <symbol id="i-freehand" viewBox="0 0 24 24"><path d="M3 15c3-6 5 4 8-2s4-6 6-2 2 4 4 1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
     <symbol id="i-rect" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="1 3" stroke-linecap="round"/></symbol>
     <symbol id="i-ellipse" viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="8" ry="6" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="1 3" stroke-linecap="round"/></symbol>
@@ -38,6 +39,9 @@
   </defs>
 </svg>
 
+<a class="skip-link" href="#canvas">用紙（描画領域）へ移動</a>
+<a class="skip-link" href="#panel">設定パネルへ移動</a>
+<div id="sr-live" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 <div id="app">
   <header class="topbar">
     <button class="icon-btn" id="btn-menu" aria-label="メニュー" aria-haspopup="true" aria-expanded="false"><svg><use href="#i-menu"/></svg></button>
@@ -63,27 +67,31 @@
     <button class="icon-btn" id="btn-panel" aria-label="パネルの表示切替" title="パネル"><svg><use href="#i-panel"/></svg></button>
   </header>
 
-  <nav class="menu" id="menu" hidden>
-    <button data-cmd="new">新規作成</button>
-    <button data-cmd="open">開く…（.tenzoo / .edl / 画像 / SVG）</button>
-    <button data-cmd="save">tenzoo 形式で保存</button>
-    <button data-cmd="save-edl">エーデル形式（.edl）で保存</button>
-    <hr>
-    <button data-cmd="import-image">下絵の画像を取り込む…</button>
-    <button data-cmd="import-svg">SVG を図形として取り込む…</button>
-    <hr>
-    <button data-cmd="print">印刷（実寸）…</button>
-    <button data-cmd="help">使い方・ショートカット</button>
-    <button data-cmd="about">tenzoo について</button>
+  <nav class="menu" id="menu" role="menu" aria-label="メニュー" hidden>
+    <button role="menuitem" tabindex="-1" data-cmd="new">新規作成</button>
+    <button role="menuitem" tabindex="-1" data-cmd="open">開く…（.tenzoo / .edl / .ezi / .sebk / 画像 / SVG）</button>
+    <button role="menuitem" tabindex="-1" data-cmd="save">tenzoo 形式で保存</button>
+    <button role="menuitem" tabindex="-1" data-cmd="save-edl">エーデル形式（.edl）で保存</button>
+    <hr role="separator">
+    <button role="menuitem" tabindex="-1" data-cmd="add-numeric">数値を指定して図形を追加…（N）</button>
+    <button role="menuitem" tabindex="-1" data-cmd="summary">図の概要を読み上げる（Q）</button>
+    <hr role="separator">
+    <button role="menuitem" tabindex="-1" data-cmd="import-image">下絵の画像を取り込む…</button>
+    <button role="menuitem" tabindex="-1" data-cmd="import-svg">SVG を図形として取り込む…</button>
+    <hr role="separator">
+    <button role="menuitem" tabindex="-1" data-cmd="print">印刷（実寸）…</button>
+    <button role="menuitem" tabindex="-1" data-cmd="help">使い方・ショートカット</button>
+    <button role="menuitem" tabindex="-1" data-cmd="about">tenzoo について</button>
   </nav>
 
-  <main class="workspace">
+  <main class="workspace" aria-label="作業領域">
     <div class="toolbar" id="toolbar" role="toolbar" aria-label="道具">
       <button data-tool="select" title="選択・移動 (V)" aria-label="選択"><svg><use href="#i-select"/></svg><span>選択</span></button>
       <button data-tool="dot" title="点を打つ (P)" aria-label="点"><svg><use href="#i-dot"/></svg><span>点</span></button>
       <button data-tool="line" title="直線 (L)" aria-label="直線"><svg><use href="#i-line"/></svg><span>直線</span></button>
       <button data-tool="polyline" title="折れ線・多角形 (Y)" aria-label="折れ線"><svg><use href="#i-polyline"/></svg><span>折れ線</span></button>
       <button data-tool="curve" title="曲線 (C)" aria-label="曲線"><svg><use href="#i-curve"/></svg><span>曲線</span></button>
+      <button data-tool="arc" title="円弧 (A)" aria-label="円弧"><svg><use href="#i-arc"/></svg><span>円弧</span></button>
       <button data-tool="freehand" title="フリーハンド (F)" aria-label="フリーハンド"><svg><use href="#i-freehand"/></svg><span>手描き</span></button>
       <button data-tool="rect" title="四角形 (R)" aria-label="四角形"><svg><use href="#i-rect"/></svg><span>四角</span></button>
       <button data-tool="ellipse" title="円・楕円 (E)" aria-label="円"><svg><use href="#i-ellipse"/></svg><span>円</span></button>
@@ -100,27 +108,30 @@
     </div>
 
     <div class="canvas-wrap" id="canvas-wrap">
-      <canvas id="canvas" tabindex="0" aria-label="点図の用紙。矢印キーでカーソル移動、スペースで点を打てます（点の道具のとき）。"></canvas>
-      <div class="hint" id="hint" aria-live="polite"></div>
-      <div class="status" id="status"></div>
+      <canvas id="canvas" tabindex="0" role="application" aria-roledescription="点図の用紙" aria-label="点図の用紙" aria-describedby="canvas-help"></canvas>
+      <p id="canvas-help" class="sr-only">矢印キーでカーソルを1ミリ動かします（Shift で5ミリ、Ctrl で10ミリ）。Enter かスペースで、選んでいる道具をカーソルの位置で使います。折れ線は Shift+Enter で終了、Ctrl+Enter で閉じて終了。Backspace で1つ取り消し、Escape で中止。W で現在位置、Q で図の概要、N で数値を指定して図形を追加。描いた図形は設定パネルの「一覧」で確認・選択できます。</p>
+      <div class="hint" id="hint" aria-hidden="true"></div>
+      <div class="status" id="status" aria-hidden="true"></div>
     </div>
 
-    <aside class="panel" id="panel" aria-label="設定パネル">
-      <div class="tabs" role="tablist">
-        <button role="tab" data-tab="style" aria-selected="true">図形</button>
-        <button role="tab" data-tab="layers">レイヤ</button>
-        <button role="tab" data-tab="underlay">下絵</button>
-        <button role="tab" data-tab="page">出力</button>
+    <aside class="panel" id="panel" aria-label="設定パネル" tabindex="-1">
+      <div class="tabs" role="tablist" aria-label="設定">
+        <button role="tab" id="tabbtn-style" aria-controls="tab-style" data-tab="style" aria-selected="true">図形</button>
+        <button role="tab" id="tabbtn-list" aria-controls="tab-list" data-tab="list" aria-selected="false" tabindex="-1">一覧</button>
+        <button role="tab" id="tabbtn-layers" aria-controls="tab-layers" data-tab="layers" aria-selected="false" tabindex="-1">レイヤ</button>
+        <button role="tab" id="tabbtn-underlay" aria-controls="tab-underlay" data-tab="underlay" aria-selected="false" tabindex="-1">下絵</button>
+        <button role="tab" id="tabbtn-page" aria-controls="tab-page" data-tab="page" aria-selected="false" tabindex="-1">出力</button>
       </div>
-      <div class="tab-body" id="tab-style" role="tabpanel"></div>
-      <div class="tab-body" id="tab-layers" role="tabpanel" hidden></div>
-      <div class="tab-body" id="tab-underlay" role="tabpanel" hidden></div>
-      <div class="tab-body" id="tab-page" role="tabpanel" hidden></div>
+      <div class="tab-body" id="tab-style" role="tabpanel" aria-labelledby="tabbtn-style" tabindex="0"></div>
+      <div class="tab-body" id="tab-list" role="tabpanel" aria-labelledby="tabbtn-list" tabindex="0" hidden></div>
+      <div class="tab-body" id="tab-layers" role="tabpanel" aria-labelledby="tabbtn-layers" tabindex="0" hidden></div>
+      <div class="tab-body" id="tab-underlay" role="tabpanel" aria-labelledby="tabbtn-underlay" tabindex="0" hidden></div>
+      <div class="tab-body" id="tab-page" role="tabpanel" aria-labelledby="tabbtn-page" tabindex="0" hidden></div>
     </aside>
   </main>
 </div>
 
-<dialog id="dlg" aria-modal="true">
+<dialog id="dlg" aria-modal="true" aria-labelledby="dlg-title">
   <form method="dialog" id="dlg-form">
     <h2 id="dlg-title"></h2>
     <div id="dlg-body"></div>
@@ -128,8 +139,8 @@
   </form>
 </dialog>
 
-<div class="toast" id="toast" role="status" aria-live="polite"></div>
-<input type="file" id="file-input" hidden>
+<div class="toast" id="toast" aria-hidden="true"></div>
+<input type="file" id="file-input" hidden aria-hidden="true">
 
 <script type="module" src="js/app.js"></script>
 </body>

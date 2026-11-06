@@ -2,7 +2,7 @@
 import { state } from './store.js'
 import { documentDots } from './raster.js'
 import { outlineOf, bboxOf } from './model.js'
-import { DOT_SIZES, getProfile } from './profiles.js'
+import { DOT_SIZES, getProfile, edlPaperOf } from './profiles.js'
 
 export const canvas = document.getElementById('canvas')
 const ctx = canvas.getContext('2d')
@@ -102,10 +102,11 @@ export function render () {
     for (let y = 0; y <= doc.page.height; y += g) { const [, sy] = toScreen(0, y); ctx.moveTo(px, Math.round(sy) + 0.5); ctx.lineTo(px + doc.page.width * z, Math.round(sy) + 0.5) }
     ctx.stroke()
   }
-  // エーデルの描ける範囲（ESA721 のとき）
+  // ESA721 で点を打てる範囲
   const profile = getProfile(doc.profile)
-  if (profile.maxUnits) {
-    const mx = profile.maxUnits.x * profile.grid.dx; const my = profile.maxUnits.y * profile.grid.dy
+  if (profile.id === 'esa721') {
+    const area = edlPaperOf(doc.page).area
+    const mx = (area.x + 0.5) * profile.grid.dx; const my = (area.y + 0.5) * profile.grid.dy
     if (mx < doc.page.width || my < doc.page.height) {
       ctx.save(); ctx.setLineDash([4, 4]); ctx.strokeStyle = 'rgba(200,60,60,.5)'
       const [ex, ey] = toScreen(mx, my)
@@ -142,7 +143,9 @@ export function render () {
       }
       ctx.beginPath()
       ctx.arc(sx, sy, Math.max(0.8, r), 0, Math.PI * 2)
-      ctx.fill()
+      if (d.side === 'back') { // 裏面の点は輪で表す（表から触るとへこみ）
+        ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = Math.max(1, r * 0.35); ctx.stroke()
+      } else ctx.fill()
     }
   }
   ctx.restore()
