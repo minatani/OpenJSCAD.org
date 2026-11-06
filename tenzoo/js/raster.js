@@ -1,8 +1,8 @@
 // ベクトル図形 → 点 への変換
 import {
-  samplePolyline, dashPolyline, pointInRings, distToPolyline, mergeClose, bboxOfPoints
+  samplePolyline, dashPolyline, pointInRings, distToPolyline, mergeClose, bboxOfPoints, offsetPolyline
 } from './geometry.js'
-import { outlineOf, brailleDots, maskContains, bboxOf } from './model.js'
+import { outlineOf, brailleDots, maskContains, bboxOf, markerDots } from './model.js'
 import { generatePattern } from './patterns.js'
 import { edelObjectDots } from './io/ezi.js'
 import { getProfile, mapSize, snapToGrid, SIZE_ORDER } from './profiles.js'
@@ -37,6 +37,10 @@ function strokeDots (path, closed, st) {
   let parts
   if (st.line === 'dashed') parts = dashPolyline(path, sp * 3.01, sp * 2, closed).map(p => ({ p, c: false }))
   else if (st.line === 'dotted') parts = [{ p: path, c: closed, sp: sp * 2 }]
+  else if (st.line === 'double') { // 二重線：線の幅 width の両側に1本ずつ
+    const w = Math.max(1, +st.width || 2.8) / 2
+    parts = [{ p: offsetPolyline(path, w, closed), c: closed }, { p: offsetPolyline(path, -w, closed), c: closed }]
+  }
   else parts = [{ p: path, c: closed }]
   const out = []
   for (const part of parts) {
@@ -64,6 +68,10 @@ function computeDots (o, doc) {
   }
   if (o.type === 'braille') {
     for (const p of brailleDots(o, doc.settings.braille)) out.push({ x: p[0], y: p[1], size: o.dot || 'M' })
+    return out
+  }
+  if (o.type === 'marker') {
+    for (const p of markerDots(o)) out.push({ x: p[0], y: p[1], size: st.dot || 'L' })
     return out
   }
   const { paths, closed } = outlineOf(o)
@@ -114,16 +122,23 @@ function computeDots (o, doc) {
 export function documentDots (doc, opts = {}) {
   const profile = getProfile(opts.profileId || doc.profile)
   const snap = opts.snap !== false && !!profile.grid
-  const all = []
+  let all = []
+  const zones = [] // 周りの点を消す範囲（点字・記号の余白）
   for (const layer of doc.layers) {
     if (opts.layerIds ? !opts.layerIds.includes(layer.id) : !layer.visible) continue
+    const side = layer.side === 'back' ? 'back' : 'front'
     for (const o of layer.objects) {
+      const z = clearZone(o, doc)
+      if (z) zones.push({ ...z, id: o.id, side })
       for (const d of objectDots(o, doc)) {
         let { x, y } = d
         if (snap) [x, y] = snapToGrid(profile, x, y)
-        all.push({ x, y, size: mapSize(profile, d.size), layer: layer.id, side: layer.side === 'back' ? 'back' : 'front' })
+        all.push({ x, y, size: mapSize(profile, d.size), layer: layer.id, side, obj: o.id })
       }
     }
+  }
+  if (zones.length && opts.clear !== false) {
+    all = all.filter(d => !zones.some(z => z.id !== d.obj && z.side === d.side && d.x >= z.minX && d.x <= z.maxX && d.y >= z.minY && d.y <= z.maxY))
   }
   const minDist = doc.settings.minDist != null ? +doc.settings.minDist : profile.minDist
   if (opts.merge === false || !(minDist > 0)) return all
@@ -131,6 +146,15 @@ export function documentDots (doc, opts = {}) {
   all.sort((a, b) => SIZE_ORDER[b.size] - SIZE_ORDER[a.size])
   const front = all.filter(d => d.side === 'front'); const back = all.filter(d => d.side === 'back')
   return [...mergeClose(front, minDist, () => true), ...mergeClose(back, minDist, () => true)]
+}
+
+// 点字・記号の「周りの点を消す」範囲（style.clear mm の余白を付けた外接矩形）
+export function clearZone (o, doc) {
+  const c = o.style && +o.style.clear
+  if (!(c > 0) || (o.type !== 'braille' && o.type !== 'marker')) return null
+  const b = bboxOf(o, doc)
+  if (!b) return null
+  return { minX: b.minX - c, minY: b.minY - c, maxX: b.maxX + c, maxY: b.maxY + c }
 }
 
 export function dotsBox (dots) {

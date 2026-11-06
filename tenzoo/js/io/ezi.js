@@ -143,7 +143,7 @@ export function objectsToEZI (objects) {
   }
   for (const o of objects) {
     const st = o.style || {}
-    if (o.type === 'dots' || o.type === 'braille' || st.stroke === false) { skipped++; continue }
+    if (o.type === 'dots' || o.type === 'braille' || o.type === 'marker' || o.type === 'mask' || st.stroke === false) { skipped++; continue }
     const kind = +(SIZE_TO_KIND[st.dot] || '2')
     const s = o.edel ? o.edel.s : Math.max(1, Math.round((+st.spacing || 2) / UNIT_AVG))
     if (o.type === 'arc') {

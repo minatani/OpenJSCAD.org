@@ -50,6 +50,25 @@ export function newDocument (paper = 'EB5') {
   }
 }
 
+// 記号（地図の目印など）。点の位置はエーデルの目盛り単位（navimap-assistant / edlprt の形に合わせる）
+const ring = (r, n, a0 = -90) => Array.from({ length: n }, (_, i) => [Math.round(r * Math.cos((a0 + 360 * i / n) * Math.PI / 180)), Math.round(r * Math.sin((a0 + 360 * i / n) * Math.PI / 180))])
+const tri = ring(8, 3)
+export const MARKERS = {
+  star: { label: '星', pts: ring(8, 5) },
+  cross: { label: '十字', pts: [[0, -7], [-7, 0], [0, 0], [7, 0], [0, 7]] },
+  square: { label: '四角', pts: [[-4, -4], [4, -4], [-4, 4], [4, 4]] },
+  diamond: { label: 'ひし形', pts: [[0, -7], [7, 0], [0, 7], [-7, 0]] },
+  circle: { label: '丸', pts: ring(7, 6, 0) },
+  triangle: { label: '三角', pts: [...tri, ...tri.map((a, i) => { const b = tri[(i + 1) % 3]; return [Math.round((a[0] + b[0]) / 2), Math.round((a[1] + b[1]) / 2)] })] },
+  dot: { label: '1点', pts: [[0, 0]] }
+}
+export const MARKER_UNIT = [0.3454, 0.3175] // ESA721 の1ステップ（mm）
+export function markerDots (o) {
+  const s = (MARKERS[o.shape] || MARKERS.star).pts
+  const k = o.scale || 1
+  return s.map(([dx, dy]) => [o.x + dx * k * MARKER_UNIT[0], o.y + dy * k * MARKER_UNIT[1]])
+}
+
 export const CLOSABLE = new Set(['rect', 'ellipse', 'path', 'curve', 'freehand', 'mask'])
 export const isClosed = o => o.type === 'rect' || o.type === 'ellipse' || o.type === 'mask' || !!o.closed
 
@@ -85,6 +104,7 @@ export function bboxOf (o, doc) {
     if (!o.points.length) return null
     return bboxOfPoints(o.points)
   }
+  if (o.type === 'marker') return bboxOfPoints(markerDots(o))
   if (o.type === 'braille') {
     const pts = brailleDots(o, doc && doc.settings.braille)
     if (!pts.length) return { minX: o.x, minY: o.y, maxX: o.x + 6, maxY: o.y + 6 }
@@ -100,6 +120,7 @@ export function bboxOf (o, doc) {
 // 図形の当たり判定（距離 tol mm 以内か、塗りのある閉図形の内側）
 export function hitTest (o, p, tol, doc) {
   if (o.type === 'dots') return o.points.some(q => Math.hypot(q[0] - p[0], q[1] - p[1]) <= tol + 0.6)
+  if (o.type === 'marker') { const b = bboxOf(o, doc); return p[0] >= b.minX - tol - 0.5 && p[0] <= b.maxX + tol + 0.5 && p[1] >= b.minY - tol - 0.5 && p[1] <= b.maxY + tol + 0.5 }
   if (o.type === 'braille') {
     const b = bboxOf(o, doc)
     return p[0] >= b.minX - tol && p[0] <= b.maxX + tol && p[1] >= b.minY - tol && p[1] <= b.maxY + tol
@@ -119,7 +140,7 @@ export function transformObject (o, m) {
     case 'dots': case 'path': case 'freehand': case 'curve': case 'arc':
       t.points = t.points.map(tp)
       return t
-    case 'braille': {
+    case 'marker': case 'braille': {
       const [x, y] = apply(m, [t.x, t.y])
       t.x = x; t.y = y
       return t

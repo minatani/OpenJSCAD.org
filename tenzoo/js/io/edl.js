@@ -18,7 +18,8 @@ const G = PROFILES.esa721.grid
 export const EDL_UNIT_X = G.dx
 export const EDL_UNIT_Y = G.dy
 export const EDL_MAX = 31 * 26 + 25 // 2文字で表せる最大（上位 '_' まで）
-export const EDL_AREAS = { B5: { x: 479, y: 726 }, A4: { x: 599, y: 790 } }
+// エーデルの図の範囲（B5 は y 684 まで。ESA721 は 725 まで打てる）
+export const EDL_AREAS = { B5: { x: 479, y: 684 }, A4: { x: 599, y: 790 } }
 
 const KIND_TO_SIZE = { 1: 'S', 2: 'M', 3: 'L' }
 export const SIZE_TO_KIND = { S: '1', M: '2', L: '3' }
@@ -66,19 +67,21 @@ export function writeEDL (dots, opts = {}) {
   const paper = opts.paper || 'B5'
   const area = opts.area || EDL_AREAS[paper] || EDL_AREAS.B5
   const warnings = []
-  const seen = new Set(); const pts = []
+  const best = new Map()
   let clipped = 0; let back = 0
   for (const d of dots) {
     const ux = d.ux != null ? d.ux : Math.round(d.x / EDL_UNIT_X)
     const uy = d.uy != null ? d.uy : Math.round(d.y / EDL_UNIT_Y)
     if (ux < 0 || uy < 0 || ux > area.x || uy > area.y) { clipped++; continue }
-    let kind = +(SIZE_TO_KIND[d.size] || '2')
-    if (d.side === 'back') { kind += 3; back++ }
-    const key = ux + ',' + uy + ',' + (kind > 3 ? 'b' : 'f')
-    if (seen.has(key)) continue
-    seen.add(key)
-    pts.push({ ux, uy, kind: String(kind) })
+    const k = +(SIZE_TO_KIND[d.size] || '2')
+    const side = d.side === 'back' ? 'b' : 'f'
+    if (side === 'b') back++
+    // 同じ座標に点が重なったら大きい方を残す
+    const key = ux + ',' + uy + ',' + side
+    const cur = best.get(key)
+    if (!cur || k > cur.k) best.set(key, { ux, uy, k, kind: String(side === 'b' ? k + 3 : k) })
   }
+  const pts = [...best.values()]
   if (clipped) warnings.push(`用紙（${paper}）の点を打てる範囲の外にある点 ${clipped} 個を省きました。`)
   if (back) warnings.push(`裏面の点 ${back} 個を両面用の拡張形式（大きさ 4～6）で書きました。エーデル本体では開けない可能性があります。`)
   if (!pts.length) throw new Error('書き出す点がありません。')

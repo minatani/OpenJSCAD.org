@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://minatani.github.io/tenzoo/docs/tenzoo.schema.json",
+  "title": "tenzoo document (.tenzoo), version 1",
+  "description": "See docs/tenzoo-format.md. Coordinates in mm, origin at the top left, y downward.",
+  "type": "object",
+  "required": ["format", "version", "layers"],
+  "properties": {
+    "format": { "const": "tenzoo" },
+    "version": { "type": "integer", "minimum": 1 },
+    "meta": {
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "created": { "type": "string" },
+        "modified": { "type": "string" },
+        "app": { "type": "string" }
+      }
+    },
+    "page": {
+      "type": "object",
+      "properties": {
+        "paper": { "type": "string", "examples": ["EB5", "EA4", "B5", "B5L", "A4", "A4L", "A3", "CUSTOM"] },
+        "width": { "type": "number", "exclusiveMinimum": 0 },
+        "height": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "profile": { "type": "string", "examples": ["esa721", "generic25", "dpi20", "swell", "free"] },
+    "settings": {
+      "type": "object",
+      "properties": {
+        "minDist": { "type": ["number", "null"], "minimum": 0 },
+        "edlFullArea": { "type": "boolean" },
+        "braille": { "$ref": "#/$defs/brailleMetrics" }
+      }
+    },
+    "layers": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/layer" } },
+    "activeLayer": { "type": "string" },
+    "underlays": { "type": "array", "items": { "$ref": "#/$defs/underlay" } }
+  },
+  "$defs": {
+    "point": { "type": "array", "prefixItems": [{ "type": "number" }, { "type": "number" }], "minItems": 2 },
+    "size": { "enum": ["S", "M", "L"] },
+    "brailleMetrics": {
+      "type": "object",
+      "properties": {
+        "dotPitchX": { "type": "number" },
+        "dotPitchY": { "type": "number" },
+        "cellPitch": { "type": "number" },
+        "linePitch": { "type": "number" }
+      }
+    },
+    "fill": {
+      "type": "object",
+      "properties": {
+        "pattern": { "enum": ["grid", "hex", "dense", "hlines", "vlines", "diag", "diag2", "cross", "xcross", "wave", "zigzag", "dashed", "brick", "checker", "circles", "radial", "random"] },
+        "spacing": { "type": "number", "exclusiveMinimum": 0 },
+        "pitch": { "type": "number", "exclusiveMinimum": 0 },
+        "angle": { "type": "number" },
+        "dot": { "$ref": "#/$defs/size" },
+        "inset": { "type": "number", "minimum": 0 },
+        "seed": { "type": "integer" }
+      }
+    },
+    "style": {
+      "type": "object",
+      "properties": {
+        "stroke": { "type": "boolean" },
+        "dot": { "$ref": "#/$defs/size" },
+        "spacing": { "type": "number", "exclusiveMinimum": 0 },
+        "line": { "enum": ["solid", "dashed", "dotted", "double"] },
+        "width": { "type": "number", "exclusiveMinimum": 0 },
+        "arrow": { "enum": ["none", "start", "end", "both"] },
+        "fill": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/fill" }] },
+        "clear": { "type": "number", "minimum": 0 }
+      }
+    },
+    "object": {
+      "type": "object",
+      "required": ["id", "type"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string" },
+        "style": { "$ref": "#/$defs/style" },
+        "edel": { "type": "object", "properties": { "s": { "type": "integer", "minimum": 1 } }, "required": ["s"] },
+        "source": { "type": "string" },
+        "kbd": { "type": "boolean" }
+      },
+      "allOf": [
+        { "if": { "properties": { "type": { "enum": ["path", "curve", "freehand"] } } },
+          "then": { "required": ["points"], "properties": { "points": { "type": "array", "items": { "$ref": "#/$defs/point" } }, "closed": { "type": "boolean" } } } },
+        { "if": { "properties": { "type": { "const": "arc" } } },
+          "then": { "required": ["points"], "properties": { "points": { "type": "array", "items": { "$ref": "#/$defs/point" }, "minItems": 3, "maxItems": 3 } } } },
+        { "if": { "properties": { "type": { "const": "rect" } } },
+          "then": { "required": ["x", "y", "w", "h"], "properties": { "x": { "type": "number" }, "y": { "type": "number" }, "w": { "type": "number" }, "h": { "type": "number" }, "rot": { "type": "number" } } } },
+        { "if": { "properties": { "type": { "const": "ellipse" } } },
+          "then": { "required": ["cx", "cy", "rx", "ry"], "properties": { "cx": { "type": "number" }, "cy": { "type": "number" }, "rx": { "type": "number" }, "ry": { "type": "number" }, "rot": { "type": "number" } } } },
+        { "if": { "properties": { "type": { "const": "dots" } } },
+          "then": { "required": ["points"], "properties": { "points": { "type": "array", "items": { "type": "array", "prefixItems": [{ "type": "number" }, { "type": "number" }, { "$ref": "#/$defs/size" }], "minItems": 2 } } } } },
+        { "if": { "properties": { "type": { "const": "braille" } } },
+          "then": { "required": ["x", "y"], "properties": { "x": { "type": "number" }, "y": { "type": "number" }, "text": { "type": "string" }, "dot": { "$ref": "#/$defs/size" }, "cells": { "type": "array", "items": { "type": "integer", "minimum": -1, "maximum": 63 } }, "metrics": { "$ref": "#/$defs/brailleMetrics" } } } },
+        { "if": { "properties": { "type": { "const": "marker" } } },
+          "then": { "required": ["x", "y", "shape"], "properties": { "x": { "type": "number" }, "y": { "type": "number" }, "shape": { "enum": ["star", "cross", "square", "diamond", "circle", "triangle", "dot"] }, "scale": { "type": "number", "exclusiveMinimum": 0 } } } },
+        { "if": { "properties": { "type": { "const": "mask" } } },
+          "then": { "required": ["x", "y", "cell", "w", "h", "rows"], "properties": { "cell": { "type": "number", "exclusiveMinimum": 0 }, "w": { "type": "integer" }, "h": { "type": "integer" }, "rows": { "type": "array", "items": { "type": "array", "items": { "type": "integer", "minimum": 0 } } } } } }
+      ]
+    },
+    "layer": {
+      "type": "object",
+      "required": ["id", "objects"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "visible": { "type": "boolean" },
+        "locked": { "type": "boolean" },
+        "side": { "enum": ["front", "back"] },
+        "color": { "type": "string" },
+        "objects": { "type": "array", "items": { "$ref": "#/$defs/object" } }
+      }
+    },
+    "underlay": {
+      "type": "object",
+      "required": ["src", "x", "y", "w", "h"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "src": { "type": "string" },
+        "x": { "type": "number" }, "y": { "type": "number" }, "w": { "type": "number" }, "h": { "type": "number" },
+        "baseW": { "type": "number" }, "baseH": { "type": "number" },
+        "opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "visible": { "type": "boolean" }
+      }
+    }
+  }
+}

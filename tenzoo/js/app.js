@@ -6,15 +6,17 @@ import {
   selectionBox
 } from './store.js'
 import { canvas, resize, fitPage, zoomTo, requestRender, bumpVersion, viewSize, currentDots } from './view.js'
-import { initTools, TOOL_HINTS, finishPoly, cancelTool, isDrawingPoly, keyboardCursor, keyboardAction, setCursor, cursorInfo, hasKeyboardDraft, setSpace } from './tools.js'
+import { snapCell, initTools, TOOL_HINTS, finishPoly, cancelTool, isDrawingPoly, keyboardCursor, keyboardAction, setCursor, cursorInfo, hasKeyboardDraft, setSpace } from './tools.js'
 import { say, describeObject, docSummary as summaryText, typeName } from './a11y.js'
-import { newDocument, newLayer, newId, defaultStyle, defaultFill, bboxOf, activeLayer, isClosed } from './model.js'
+import { newDocument, newLayer, newId, defaultStyle, defaultFill, bboxOf, activeLayer, isClosed, MARKERS } from './model.js'
 import { PATTERNS, PATTERN_IDS, generatePattern } from './patterns.js'
 import { PROFILES, PAPERS, DOT_SIZES, getProfile, edlPaperOf } from './profiles.js'
 import { documentDots } from './raster.js'
 import { kanaToBraille, bitsToUnicode, SIX_KEY, brailleToKana } from './braille.js'
-import { parseEDL, bytesToLatin1, latin1ToBytes, isEDL } from './io/edl.js'
+import { parseEDL, bytesToLatin1, latin1ToBytes, isEDL, EDL_UNIT_X, EDL_UNIT_Y } from './io/edl.js'
 import { isEZI, parseSEBK, writeSEBK, combineEdlEzi, buildEdelFiles, UNIT_AVG } from './io/ezi.js'
+import { encodeESA } from './io/esa.js'
+import { checkDocument } from './check.js'
 import { serializeDocument, dotsToSVG, dotsToPNG, dotsToPDF } from './io/export.js'
 import { loadImageFile, imageDataOf, imageToDots, fitPlacement, svgToObjects } from './io/import.js'
 import { mScale, mRotate } from './geometry.js'
@@ -68,7 +70,7 @@ const docSummary = () => summaryText(state.doc, currentDots().length)
 const TOOL_NAMES = {
   select: '選択', dot: '点', line: '直線', polyline: '折れ線', curve: '曲線', arc: '円弧', freehand: '手描き', rect: '四角形', ellipse: '円・楕円',
   fillrect: '四角の範囲を塗る', fillellipse: '楕円の範囲を塗る', filllasso: '投げ縄の範囲を塗る', fillpoly: '多角形の範囲を塗る', bucket: '囲まれた所を塗る',
-  braille: '点字', eraser: '消しゴム', pan: '表示の移動'
+  braille: '点字', marker: '記号', eraser: '消しゴム', pan: '表示の移動'
 }
 
 function download (data, name, type) {
@@ -196,7 +198,28 @@ function renderStylePanel_ () {
     ))
   }
   if (!sel.length && state.tool === 'eraser') {
-    kids.push(sec('消しゴム', rangeRow('大きさ（半径）', state.eraserSize || 3, v => { state.eraserSize = v }, { min: 1, max: 15, step: 0.5 })))
+    kids.push(sec('消しゴム',
+      segRow('消し方', state.eraserMode || 'brush', { brush: 'なぞって消す', rect: '四角の範囲を消す' }, v => { state.eraserMode = v; renderStylePanel() }),
+      (state.eraserMode || 'brush') === 'brush' && rangeRow('大きさ（半径）', state.eraserSize || 3, v => { state.eraserSize = v }, { min: 1, max: 15, step: 0.5 })))
+  }
+  // 記号
+  const markerSel = sel.filter(o => o.type === 'marker')
+  if (markerSel.length || (!sel.length && state.tool === 'marker')) {
+    const m0 = markerSel[0]
+    const setM = (patch, stylePatch) => {
+      if (markerSel.length) { for (const o of markerSel) replaceObject(o.id, { ...o, ...patch, style: { ...o.style, ...(stylePatch || {}) } }); commit() } else {
+        if (patch.shape) state.markerShape = patch.shape
+        if (stylePatch && stylePatch.dot) state.markerDot = stylePatch.dot
+        if (stylePatch && stylePatch.clear != null) state.markerClear = stylePatch.clear
+        renderStylePanel()
+      }
+    }
+    kids.push(sec('記号',
+      segRow('形', m0 ? m0.shape : (state.markerShape || 'star'), Object.fromEntries(Object.entries(MARKERS).map(([k, v]) => [k, v.label])), v => setM({ shape: v })),
+      segRow('点の大きさ', m0 ? m0.style.dot : (state.markerDot || 'L'), { L: '大', M: '中', S: '小' }, v => setM({}, { dot: v })),
+      rangeRow('周りの点を消す余白', m0 ? (m0.style.clear || 0) : (state.markerClear != null ? state.markerClear : 3.5), v => setM({}, { clear: v }), { min: 0, max: 8, step: 0.5 }),
+      h('p', { class: 'note' }, '記号の形は navimap-assistant・edlprt の地図記号と同じです。余白の中にある、ほかの図形の点は書き出し・表示のときに消えます。')
+    ))
   }
 
   // 点字
@@ -204,18 +227,21 @@ function renderStylePanel_ () {
     kids.push(sec('点字',
       h('div', { class: 'braille-preview', 'aria-label': '点字の表示' }, kanaToBraille(target.text || '').cells.map(c => c === -1 ? '\n' : bitsToUnicode(c)).join('')),
       h('div', { class: 'btns' }, h('button', { class: 'btn', onclick: () => editBraille(target) }, '文字を編集…')),
-      segRow('点の大きさ', target.dot || 'M', { L: '大', M: '中', S: '小' }, v => { replaceObject(target.id, { ...target, dot: v }); commit() })
+      segRow('点の大きさ', target.dot || 'M', { L: '大', M: '中', S: '小' }, v => { replaceObject(target.id, { ...target, dot: v }); commit() }),
+      rangeRow('周りの点を消す余白', (target.style && target.style.clear) || 0, v => { replaceObject(target.id, { ...target, style: { ...target.style, clear: v } }); commit() }, { min: 0, max: 6, step: 0.5 }),
+      h('div', { class: 'btns' }, h('button', { class: 'btn', onclick: () => { const q = snapCell([target.x, target.y]); replaceObject(target.id, { ...target, x: q[0], y: q[1] }); commit(); announce('点字をマス目に合わせました。') } }, 'マス目に合わせる'))
     ))
   }
 
-  const vectorSel = sel.filter(o => o.type !== 'dots' && o.type !== 'braille')
-  const showLine = !fillMode && (vectorSel.length || (!sel.length && !['dot', 'eraser', 'braille', 'select', 'pan'].includes(state.tool)) || (!sel.length && state.tool === 'select'))
+  const vectorSel = sel.filter(o => o.type !== 'dots' && o.type !== 'braille' && o.type !== 'marker')
+  const showLine = !fillMode && (vectorSel.length || (!sel.length && !['dot', 'eraser', 'braille', 'marker', 'select', 'pan'].includes(state.tool)) || (!sel.length && state.tool === 'select'))
   if (showLine) {
     kids.push(sec('輪郭線',
       checkRow('輪郭線を点で描く', st.stroke !== false, v => setStyle({ stroke: v })),
       segRow('点の大きさ', st.dot || 'M', { L: '大', M: '中', S: '小' }, v => setStyle({ dot: v })),
       rangeRow('点の間隔', st.spacing || 2, v => setStyle({ spacing: v }), { min: 1, max: 8, step: 0.1 }),
-      segRow('線の種類', st.line || 'solid', { solid: '実線', dashed: '破線', dotted: '点線' }, v => setStyle({ line: v })),
+      segRow('線の種類', st.line || 'solid', { solid: '実線', dashed: '破線', dotted: '点線', double: '二重線' }, v => setStyle({ line: v })),
+      st.line === 'double' && rangeRow('二重線の幅', st.width || 2.8, v => setStyle({ width: v }), { min: 1.5, max: 8, step: 0.1 }),
       segRow('矢印', st.arrow || 'none', { none: 'なし', end: '終点', start: '始点', both: '両端' }, v => setStyle({ arrow: v }))
     ))
   }
@@ -572,6 +598,12 @@ function renderPagePanel_ () {
       numRow('マスの間隔', d.settings.braille.cellPitch, v => { d.settings.braille.cellPitch = v; commit('page') }, { min: 3, max: 12 }),
       numRow('行の間隔', d.settings.braille.linePitch, v => { d.settings.braille.linePitch = v; commit('page') }, { min: 5, max: 20 })
     ),
+    sec('点字のマス目・読み',
+      checkRow('点字のマス目と行・マスの番号を表示', state.showCells, v => { state.showCells = v; requestRender(); savePrefs() }),
+      checkRow('点字を置くときマス目に合わせる', state.snapCells, v => { state.snapCells = v; savePrefs() }),
+      checkRow('点字の読み（墨字）を重ねて表示', state.showReading, v => { state.showReading = v; requestRender(); savePrefs() }),
+      checkRow('B5 で ESA721 の範囲いっぱい（725 行）まで使う（エーデルの図は 684 行まで）', !!d.settings.edlFullArea, v => { d.settings.edlFullArea = v; commit('page') })
+    ),
     sec('方眼・吸着',
       checkRow('方眼を表示', state.showGrid, v => { state.showGrid = v; requestRender(); savePrefs() }),
       checkRow('方眼に吸着して描く', state.snapGrid, v => { state.snapGrid = v; savePrefs() }),
@@ -792,8 +824,28 @@ function exportDots (layerIds, merge = true, profileId) {
 const frontOnly = ds => ds.filter(d => d.side !== 'back')
 
 // エーデル形式で保存する（.edl、.edl+.ezi、.sebk）
+// ESA721 に送るデータ（.esa）を保存する
+function saveESA (ids, name, merge, opts) {
+  const paper = edlPaperOf(state.doc.page, true)
+  const full = edlPaperOf(state.doc.page, !!state.doc.settings.edlFullArea)
+  const dots = exportDots(ids, merge, 'esa721').filter(d => d.side !== 'back')
+  const best = new Map()
+  let out = 0
+  for (const d of dots) {
+    const ux = Math.round(d.x / EDL_UNIT_X); const uy = Math.round(d.y / EDL_UNIT_Y)
+    if (ux < 0 || uy < 0 || ux > paper.area.x || uy > full.area.y) { out++; continue }
+    const k = { S: 1, M: 2, L: 3 }[d.size] || 2
+    const key = ux + ',' + uy
+    if (!best.has(key) || best.get(key).k < k) best.set(key, { ux, uy, k })
+  }
+  if (!best.size) throw new Error('書き出す点がありません。')
+  const { bytes, dropped } = encodeESA([[...best.values()]], { bySize: opts.bySize, aspect: opts.aspect, lastRow: paper.area.y })
+  download(bytes, name + '.esa', 'application/octet-stream')
+  announce(`ESA721 用のデータ（点 ${best.size - dropped} 個${opts.bySize ? '、点種別印刷' : ''}${opts.aspect != null ? `、縦横比の補正 ${opts.aspect}%` : ''}）を保存しました。${out + dropped ? `用紙の範囲外の点 ${out + dropped} 個を省きました。` : ''}`, true, 6000)
+}
+
 function saveEdel (ids, name, kind = 'edl', merge = true) {
-  const paper = edlPaperOf(state.doc.page)
+  const paper = edlPaperOf(state.doc.page, !!state.doc.settings.edlFullArea)
   const dots = exportDots(ids, merge, 'esa721')
   const objs = state.doc.layers.filter(l => ids.includes(l.id) && l.side !== 'back').flatMap(l => l.objects)
   const { edl, ezi } = buildEdelFiles(dots, objs, paper)
@@ -809,15 +861,16 @@ function saveEdel (ids, name, kind = 'edl', merge = true) {
 }
 
 async function exportDialog () {
-  const opts = { format: 'edl', layers: 'visible', merge: true, dotScale: 1, dpi: 300, perLayer: false }
+  const opts = { format: 'edl', layers: 'visible', merge: true, dotScale: 1, dpi: 300, perLayer: false, bySize: false, aspect: 'none' }
   const body = h('div', {})
   const draw = () => {
     body.replaceChildren(
-      selRow('形式', opts.format, { edl: 'エーデル（.edl）', ezi: 'エーデル（.edl＋.ezi）', sebk: 'エーデル（.sebk）', pdf: 'PDF', svg: 'SVG', png: 'PNG', tenzoo: 'tenzoo' }, v => { opts.format = v; draw() }),
+      selRow('形式', opts.format, { edl: 'エーデル（.edl）', ezi: 'エーデル（.edl＋.ezi）', sebk: 'エーデル（.sebk）', esa: 'ESA721 送信用データ（.esa）', pdf: 'PDF', svg: 'SVG', png: 'PNG', tenzoo: 'tenzoo' }, v => { opts.format = v; draw() }),
       h('p', { class: 'note' }, {
         edl: 'エーデルの点図（.edl）。ESA721 での印刷や、エーデルでの表示に使えます。点の位置は ESA721 の格子に合わせ、用紙は「出力」の設定から B5 か A4 を選びます。',
         ezi: '.edl と、線・円弧を編集できる図形データ .ezi の組（試験的）。エーデルで線を編集し直したいときに。',
         sebk: '.edl と .ezi を1つにまとめた .sebk（試験的）。',
+        esa: 'ESA721 にそのまま送れるプロッタのデータ（edlprt・エーデルの印刷ソフト EBP と同じ書式）。tenzoo からは直接送りません。Windows では「copy /b 図.esa COM1」などで送れます。',
         pdf: '実寸の PDF。立体コピー（カプセルペーパー）の原稿や、確認用の印刷に。',
         svg: '実寸の SVG（ベクトル）。他のソフトでの加工や、他の点字プリンタのドライバに。',
         png: '実寸の画像（解像度指定）。立体コピーの原稿などに。',
@@ -827,6 +880,8 @@ async function exportDialog () {
       opts.format !== 'tenzoo' && checkRow('レイヤごとに別のファイルにする', opts.perLayer, v => { opts.perLayer = v }),
       opts.format !== 'tenzoo' && checkRow('近すぎる点をまとめる', opts.merge, v => { opts.merge = v }),
       ['pdf', 'png', 'svg'].includes(opts.format) && rangeRow('点の大きさの倍率', opts.dotScale, v => { opts.dotScale = v }, { min: 0.5, max: 2, step: 0.05, unit: '倍' }),
+      opts.format === 'esa' && checkRow('点種別印刷（中→小→大の順に1種類ずつ打つ。EBP と同じ）', opts.bySize, v => { opts.bySize = v }),
+      opts.format === 'esa' && selRow('縦横比の補正（EBP）', opts.aspect, { none: 'しない', 0: '0%（3行下げるだけ）', 50: '50%', 100: '100%（エーデルの図向け）' }, v => { opts.aspect = v }),
       opts.format === 'png' && selRow('解像度', String(opts.dpi), { 150: '150 dpi', 300: '300 dpi', 600: '600 dpi' }, v => { opts.dpi = +v })
     )
   }
@@ -847,6 +902,7 @@ async function exportDialog () {
     for (const [i, s] of layerSets.entries()) {
       if (i) await new Promise(resolve => setTimeout(resolve, 400)) // 連続ダウンロードの間をあける
       if (['edl', 'ezi', 'sebk'].includes(opts.format)) saveEdel(s.ids, s.name, opts.format, opts.merge)
+      else if (opts.format === 'esa') saveESA(s.ids, s.name, opts.merge, { bySize: opts.bySize, aspect: opts.aspect === 'none' ? null : +opts.aspect })
       else if (opts.format === 'svg') download(dotsToSVG(frontOnly(exportDots(s.ids, opts.merge)), state.doc.page, { dotScale: opts.dotScale, title: s.name }), s.name + '.svg', 'image/svg+xml')
       else if (opts.format === 'png') download(await dotsToPNG(frontOnly(exportDots(s.ids, opts.merge)), state.doc.page, opts.dpi, { dotScale: opts.dotScale }), s.name + '.png', 'image/png')
     }
@@ -885,7 +941,7 @@ async function newDoc () {
 function helpDialog () {
   const rows = [
     ['V', '選択・移動'], ['P', '点'], ['L', '直線'], ['Y', '折れ線'], ['C', '曲線'], ['A', '円弧'], ['F', 'フリーハンド'], ['R / E', '四角 / 円'],
-    ['Shift+R / E / F / Y', '範囲を塗る（四角 / 楕円 / 投げ縄 / 多角形）'], ['G', '囲まれた所を塗る'], ['B', '点字'], ['X', '消しゴム'], ['H・Space押しながら', '表示の移動'],
+    ['Shift+R / E / F / Y', '範囲を塗る（四角 / 楕円 / 投げ縄 / 多角形）'], ['G', '囲まれた所を塗る'], ['B', '点字'], ['K', '記号（星・十字など）'], ['I', '点図の検査（近すぎる点・密集・範囲外・点字にかかる線）'], ['X', '消しゴム'], ['H・Space押しながら', '表示の移動'],
     ['矢印キー（用紙で）', 'カーソルを 1mm 移動（Shift 5mm、Ctrl 10mm）。選択中の図形があるときは図形を 0.5mm 移動（Shift 5mm）'],
     ['Enter / Space（用紙で）', 'カーソルの位置で道具を使う：点を打つ、始点・終点を置く、頂点を置く、塗る、点字を置く、図形を選ぶ'],
     ['Shift+Enter / Ctrl+Enter', '折れ線・曲線を終える / 閉じて終える'], ['Backspace（用紙で）', '点を消す（点の道具）、最後の頂点を取り消す'],
@@ -907,7 +963,7 @@ function helpDialog () {
 function aboutDialog () {
   dialog('tenzoo について', h('div', {},
     h('p', {}, 'tenzoo は、ブラウザだけで動く点図（触図）エディタです。インストール不要で、データはこの端末の中だけで処理されます（サーバーには送られません）。'),
-    h('p', {}, 'エーデル形式（.edl）の読み書き、レイヤ、ベクトル図形、16 種類の面の表現、画像の下絵・自動点図化、SVG 取り込み、PDF・SVG・PNG への書き出しに対応しています。'),
+    h('p', {}, 'エーデル形式（.edl）の読み書き、レイヤ、ベクトル図形、17 種類の面の表現、画像の下絵・自動点図化、SVG 取り込み、PDF・SVG・PNG への書き出しに対応しています。'),
     h('p', { class: 'note' }, 'エーデルの形式（.edl・.ezi・.sebk）は公開仕様がないため、利用者による実物ファイルと ESA721 の説明書の解析、および tenji-editor［MIT License］の解析に基づいています。エーデルは藤野稔寛氏によるソフトウェアです。tenzoo はエーデルの作者とは関係のない独立したソフトウェアです。'),
     h('p', { class: 'note' }, 'tenzoo 0.2.0 / MIT License')
   ))
@@ -972,7 +1028,7 @@ function scheduleAutosave () {
 }
 function savePrefs () {
   try {
-    localStorage.setItem('tenzoo:prefs', JSON.stringify({ showGrid: state.showGrid, snapGrid: state.snapGrid, gridSize: state.gridSize, theme: document.documentElement.dataset.theme || 'auto', panel: window.matchMedia('(max-width: 720px)').matches ? undefined : !$('.workspace').classList.contains('panel-hidden') }))
+    localStorage.setItem('tenzoo:prefs', JSON.stringify({ showGrid: state.showGrid, snapGrid: state.snapGrid, showCells: state.showCells, snapCells: state.snapCells, showReading: state.showReading, gridSize: state.gridSize, theme: document.documentElement.dataset.theme || 'auto', panel: window.matchMedia('(max-width: 720px)').matches ? undefined : !$('.workspace').classList.contains('panel-hidden') }))
   } catch (e) { }
 }
 function loadPrefs () {
@@ -981,6 +1037,7 @@ function loadPrefs () {
     if (p.showGrid != null) state.showGrid = p.showGrid
     if (p.snapGrid != null) state.snapGrid = p.snapGrid
     if (p.gridSize) state.gridSize = p.gridSize
+    for (const k of ['showCells', 'snapCells', 'showReading']) if (p[k] != null) state[k] = p[k]
     if (p.theme && p.theme !== 'auto') document.documentElement.dataset.theme = p.theme
     // スマートフォンでは、はじめはパネルを閉じておく（図が見えるように）
     if (p.panel === false || (p.panel == null && window.matchMedia('(max-width: 720px)').matches)) $('.workspace').classList.add('panel-hidden')
@@ -1057,14 +1114,24 @@ function onKey (e) {
   if (!e.shiftKey && lk === 'q') { announce(docSummary()); return }
   if (!e.shiftKey && lk === 'n') { addByNumbersDialog(); return }
   if (!e.shiftKey && lk === 'm') { moveCursorDialog(); return }
+  if (!e.shiftKey && lk === 'i') { checkDialog(); return }
   const map = e.shiftKey
     ? { R: 'fillrect', E: 'fillellipse', F: 'filllasso', Y: 'fillpoly' }
-    : { v: 'select', p: 'dot', l: 'line', y: 'polyline', c: 'curve', a: 'arc', f: 'freehand', r: 'rect', e: 'ellipse', g: 'bucket', b: 'braille', x: 'eraser', h: 'pan' }
+    : { v: 'select', p: 'dot', l: 'line', y: 'polyline', c: 'curve', a: 'arc', f: 'freehand', r: 'rect', e: 'ellipse', g: 'bucket', b: 'braille', k: 'marker', x: 'eraser', h: 'pan' }
   const t = map[e.shiftKey ? k.toUpperCase() : lk]
   if (t) setTool(t)
 }
 function doUndo () { if (!canUndo()) { announce('元に戻す操作はありません。'); return } undo(); announce('元に戻しました。') }
 function doRedo () { if (!canRedo()) { announce('やり直す操作はありません。'); return } redo(); announce('やり直しました。') }
+
+// 点図の検査
+async function checkDialog () {
+  const r = checkDocument(state.doc)
+  const items = r.items.map(it => h('li', {}, it.text))
+  announce(r.summary)
+  await dialog('点図の検査', h('div', {}, h('p', {}, r.summary), items.length ? h('ul', {}, ...items) : h('p', {}, '問題は見つかりませんでした。'),
+    h('p', { class: 'note' }, '目安は navimap-assistant の検査（点どうし約1.7mm 以上、60×60 目盛りに 60 点まで）に合わせています。')))
+}
 
 // カーソルの位置を数値で指定
 async function moveCursorDialog () {
@@ -1083,7 +1150,7 @@ async function addByNumbersDialog () {
   const c = state.cursor || [20, 20]
   const v = { type: 'line', x1: c[0], y1: c[1], x2: c[0] + 40, y2: c[1], x: c[0], y: c[1], w: 40, h: 30, cx: c[0] + 20, cy: c[1] + 20, rx: 20, ry: 20, pts: '', text: '', fill: false, n: 6, r: 20 }
   const body = h('div', {})
-  const types = { line: '直線', polyline: '折れ線', polygon: '多角形', regular: '正多角形', rect: '四角形', ellipse: '円・楕円', arc: '円弧', dots: '点', braille: '点字' }
+  const types = { line: '直線', polyline: '折れ線', polygon: '多角形', regular: '正多角形', rect: '四角形', ellipse: '円・楕円', arc: '円弧', dots: '点', braille: '点字', marker: '記号' }
   const draw = () => {
     const kids = [selRow('図形', v.type, types, t => { v.type = t; draw(); setTimeout(() => $('#dlg [data-k="s:図形"]')?.focus(), 0) })]
     const N = (label, key, opts) => numRow(label, v[key], n => { v[key] = n }, { min: -1000, max: 1000, ...opts })
@@ -1096,6 +1163,7 @@ async function addByNumbersDialog () {
     else if (v.type === 'rect') kids.push(N('左', 'x'), N('上', 'y'), N('幅', 'w', { min: 0.1 }), N('高さ', 'h', { min: 0.1 }))
     else if (v.type === 'ellipse') kids.push(N('中心 x', 'cx'), N('中心 y', 'cy'), N('横半径', 'rx', { min: 0.1 }), N('縦半径', 'ry', { min: 0.1 }))
     else if (v.type === 'braille') { kids.push(N('左上 x', 'x'), N('左上 y', 'y'), T('点字にする文（かな・英数字）', 'text', '例：てんず')) }
+    else if (v.type === 'marker') { kids.push(N('中心 x', 'x'), N('中心 y', 'y'), selRow('記号の形', v.shape || 'star', Object.fromEntries(Object.entries(MARKERS).map(([k, m]) => [k, m.label])), sh => { v.shape = sh })) }
     if (['polygon', 'regular', 'rect', 'ellipse'].includes(v.type)) kids.push(checkRow('内側を面で塗る（「図形」タブの面の設定を使います）', v.fill, b => { v.fill = b }))
     kids.push(h('p', { class: 'note' }, '座標は用紙の左上を原点とする mm です。線の点の大きさや間隔は「図形」タブの設定を使います。'))
     body.replaceChildren(...kids)
@@ -1121,6 +1189,7 @@ async function addByNumbersDialog () {
     case 'rect': o = { type: 'rect', x: v.x, y: v.y, w: v.w, h: v.h, rot: 0, style }; break
     case 'ellipse': o = { type: 'ellipse', cx: v.cx, cy: v.cy, rx: v.rx, ry: v.ry, rot: 0, style }; break
     case 'braille': if (v.text.trim()) o = { type: 'braille', x: v.x, y: v.y, text: v.text, dot: 'M', style }; break
+    case 'marker': o = { type: 'marker', x: v.x, y: v.y, shape: v.shape || 'star', style: { ...style, dot: 'L', clear: 3.5 } }; break
   }
   if (!o) { announce('座標や文の入力が正しくないため、追加できませんでした。例：20,20 80,20 50,70', true); return }
   const obj = addObject(o)
@@ -1200,6 +1269,7 @@ function init () {
       'import-svg': () => pickFile('.svg,image/svg+xml', importSVG),
       'add-numeric': addByNumbersDialog,
       summary: () => announce(docSummary(), true),
+      check: checkDialog,
       print: printDoc,
       help: helpDialog,
       about: aboutDialog

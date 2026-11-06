@@ -2,7 +2,7 @@
 import { state } from './store.js'
 import { documentDots } from './raster.js'
 import { outlineOf, bboxOf } from './model.js'
-import { DOT_SIZES, getProfile, edlPaperOf } from './profiles.js'
+import { DOT_SIZES, getProfile, edlPaperOf, PAPERS } from './profiles.js'
 
 export const canvas = document.getElementById('canvas')
 const ctx = canvas.getContext('2d')
@@ -102,6 +102,26 @@ export function render () {
     for (let y = 0; y <= doc.page.height; y += g) { const [, sy] = toScreen(0, y); ctx.moveTo(px, Math.round(sy) + 0.5); ctx.lineTo(px + doc.page.width * z, Math.round(sy) + 0.5) }
     ctx.stroke()
   }
+  // 点字のマス目（1マス=15目盛り、1行=33目盛り）と行・マスの番号（エーデルの定規のように）
+  if (state.showCells) {
+    const cw = 15 * 0.3454; const lh = 33 * 0.3175
+    const pp = PAPERS[doc.page.paper] || {}
+    const gw = Math.min(doc.page.width, pp.cols ? pp.cols * cw : doc.page.width) // 点字用紙なら 32（40）マス × 22（24）行まで
+    const gh = Math.min(doc.page.height, pp.rows ? pp.rows * lh : doc.page.height)
+    ctx.save()
+    ctx.strokeStyle = 'rgba(190,24,93,.18)'; ctx.lineWidth = 1
+    ctx.beginPath()
+    for (let x = 0; x <= gw + 0.01; x += cw) { const [sx] = toScreen(x, 0); ctx.moveTo(Math.round(sx) + 0.5, py); ctx.lineTo(Math.round(sx) + 0.5, py + gh * z) }
+    for (let y = 0; y <= gh + 0.01; y += lh) { const [, sy] = toScreen(0, y); ctx.moveTo(px, Math.round(sy) + 0.5); ctx.lineTo(px + gw * z, Math.round(sy) + 0.5) }
+    ctx.stroke()
+    if (lh * z > 9) {
+      ctx.fillStyle = 'rgba(190,24,93,.7)'; ctx.font = `${Math.min(12, lh * z * 0.45)}px system-ui`; ctx.textBaseline = 'middle'
+      for (let r = 0, y = 0; y + lh <= gh + 0.01; y += lh, r++) { const [, sy] = toScreen(0, y + lh / 2); ctx.fillText(String(r + 1), px + 2, sy) }
+      ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+      for (let c = 0, x = 0; x + cw <= gw + 0.01; x += cw, c++) { if ((c + 1) % 5 === 0) { const [sx] = toScreen(x + cw / 2, 0); ctx.fillText(String(c + 1), sx, py + 2) } }
+    }
+    ctx.restore()
+  }
   // ESA721 で点を打てる範囲
   const profile = getProfile(doc.profile)
   if (profile.id === 'esa721') {
@@ -148,6 +168,24 @@ export function render () {
       } else ctx.fill()
     }
   }
+  // 点字の読み（墨字）を重ねて表示
+  if (state.showReading) {
+    ctx.save()
+    ctx.font = `${Math.max(10, Math.min(16, 3 * z))}px system-ui`; ctx.textBaseline = 'bottom'
+    for (const l of doc.layers) {
+      if (!l.visible) continue
+      for (const o of l.objects) {
+        if (o.type !== 'braille' || !o.text) continue
+        const b = bboxOf(o, doc)
+        const [sx, sy] = toScreen(b.minX, b.minY - 0.8)
+        const t = o.text.replace(/\n/g, ' ')
+        const w = ctx.measureText(t).width
+        ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.fillRect(sx - 2, sy - 16, w + 4, 16)
+        ctx.fillStyle = '#7e22ce'; ctx.fillText(t, sx, sy)
+      }
+    }
+    ctx.restore()
+  }
   ctx.restore()
 
   // 選択
@@ -185,7 +223,7 @@ export function render () {
 }
 
 function drawOutline (o) {
-  if (o.type === 'dots' || o.type === 'braille') {
+  if (o.type === 'dots' || o.type === 'braille' || o.type === 'marker') {
     const b = bboxOf(o, state.doc)
     if (!b) return
     const [x0, y0] = toScreen(b.minX - 1, b.minY - 1); const [x1, y1] = toScreen(b.maxX + 1, b.maxY + 1)

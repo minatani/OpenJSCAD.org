@@ -1,4 +1,4 @@
-# tenzoo のデータ形式
+# tenzoo のデータ形式（エーデル形式との対応）
 
 ## 1. 考え方
 
@@ -11,69 +11,7 @@
 
 ## 2. tenzoo 形式（.tenzoo）
 
-UTF-8 の JSON。
-
-```jsonc
-{
-  "format": "tenzoo",          // 固定
-  "version": 1,                // 形式の版
-  "meta": { "title": "家と木", "created": "ISO 8601", "modified": "ISO 8601", "app": "tenzoo" },
-  "page": { "paper": "EB5", "width": 203.2, "height": 254 },   // mm（EB5 = 点字用紙 B5）
-  "profile": "esa721",          // 既定の出力先（esa721 | generic25 | dpi20 | swell | free）
-  "settings": {
-    "minDist": null,            // 点どうしの最小距離 mm（null ならプロファイルの既定値）
-    "braille": { "dotPitchX": 2.07, "dotPitchY": 2.06, "cellPitch": 5.18, "linePitch": 10.48 }
-  },
-  "layers": [                   // 配列の先頭が一番奥
-    {
-      "id": "L...", "name": "外形", "visible": true, "locked": false, "color": "#1d4ed8",
-      "side": "front",          // front | back（両面印刷の裏面）
-      "objects": [ /* 図形（下記） */ ]
-    }
-  ],
-  "activeLayer": "L...",
-  "underlays": [                // 下絵（印刷されない）
-    { "id": "u...", "name": "photo.jpg", "src": "data:image/jpeg;base64,...",
-      "x": 10, "y": 20, "w": 160, "h": 120, "baseW": 160, "baseH": 120, "opacity": 0.4, "visible": true }
-  ]
-}
-```
-
-### 2.1 図形に共通のスタイル
-
-```jsonc
-"style": {
-  "stroke": true,          // 輪郭線を点で描く
-  "dot": "M",              // 輪郭線の点の大きさ L | M | S
-  "spacing": 2.0,          // 輪郭線の点の間隔 mm（角には必ず点を置き、辺を均等に割る）
-  "line": "solid",         // solid | dashed | dotted
-  "arrow": "none",         // none | start | end | both（開いた線のみ）
-  "fill": null | {         // 面（閉じた図形のみ）
-    "pattern": "grid",     // grid hex dense hlines vlines diag diag2 cross xcross wave zigzag dashed brick checker circles radial random
-    "spacing": 3.0,        // 線どうし・点どうしの間隔 mm
-    "pitch": 1.6,          // 線の中の点の間隔 mm
-    "angle": 0,            // 度
-    "dot": "S",            // 面の点の大きさ
-    "inset": 1.5           // 輪郭線からの余白 mm（stroke が true のとき有効）
-  }
-}
-```
-
-### 2.2 図形の種類
-
-| type | 内容 |
-|---|---|
-| `path` | 折れ線・直線・多角形。`points: [[x,y],...]`, `closed` |
-| `curve` | 通過点を結ぶ滑らかな曲線（Catmull-Rom）。`points`, `closed` |
-| `arc` | 円弧。`points: [始点, 終点, ふくらみの点]`（エーデルの .ezi と同じ定義） |
-| `freehand` | 手描き。`points`, `closed` |
-| `rect` | 四角形。`x, y, w, h, rot`（rot は中心まわりのラジアン） |
-| `ellipse` | 楕円。`cx, cy, rx, ry, rot` |
-| `braille` | 点字。`x, y`（左上の点の中心）, `text`（かな・英数字・Unicode 点字）, `dot`（既定 M＝エーデルの大きさ 2）, `metrics`（任意で寸法を上書き） |
-| `dots` | 点の集まり（.edl からの読み込み、点の道具、点への変換結果）。`points: [[x, y, size], ...]` |
-| `mask` | 塗りつぶしで作った領域。`x, y, cell`（セルの大きさ mm）, `w, h`（セル数）, `rows`（各行のラン `[開始, 長さ, ...]`） |
-
-すべての図形は `id` と `style` を持つ。エーデルから読み込んだ線・円弧は `edel: { s }`（.edl 目盛りでの点の間隔）を持ち、エーデルと同じ方法で点を置く。将来の図形の種類は新しい `type` として追加する（古い版は知らない種類を無視できる）。
+tenzoo 独自の保存形式は [tenzoo-format.md](tenzoo-format.md)（[English](tenzoo-format.en.md)、[JSON Schema](tenzoo.schema.json)）に定めています。
 
 ## 3. エーデルの形式
 
@@ -91,7 +29,9 @@ EDELB5,33,485                 ← "EDEL" + 用紙名 + "," + 点の最小の y +
 ```
 
 - 用紙名：`B5`（点字用紙 8×10インチ、32マス×22行、x 0～479）、`A4`（10×11インチ、40マス×24行、x 0～599）。
-  tenzoo は A4 の y を 790 までにする（それより下に点があると ESA721 が紙を送り続ける現象への対策）
+  エーデルは B5 の図を y 684 までに収める（印刷ソフト EBP が縦横比の補正で 725 行まで伸ばす）。tenzoo も既定で 684 まで、設定で 725 まで。
+  A4 は y 790 まで（それより下に点があると ESA721 が紙を送り続ける現象への対策）
+- 同じ座標に点が重なるときは大きい方を残す
 - 座標は x・y それぞれ2文字：値 = (上位 − 64) × 26 + (下位 − 64)。下位は `@`～`Y`（0～25）、上位は `@`～`Z` と A4 では `[` `\`（27, 28）
 - 点は (y, x) の昇順。点の大きさが変わるところで行を変える。同じ座標の点はない
 - 点の大きさ：`1` 小、`2` 中（点字の点）、`3` 大（ESA721 の `ESC ESC D 0/1/2`）。tenzoo では `S` / `M` / `L`
@@ -129,6 +69,20 @@ Zu_1.edl,2406 <.edl そのもの>Zu_1.ezi,2025 <.ezi そのもの>fumi.data,1 32
 ```
 
 - `fumi.data` は構造未解明（点字の文書領域らしい。中身のある実物が必要）。tenzoo は読み込みでは無視し、書き出しでは実物の空のもの（810 バイト）を付ける
+
+### 3.4 ESA721 送信用データ（.esa、書き出しのみ）
+
+edlprt（ESA721 Ver'95 説明書とエーデルの印刷ソフト EBP の解析）と同じバイト列。1ページ＝`ESC ESC G` → 点 → `CR` → `FF` → `ESC ESC D 1`。
+点は `YHI YLO XHI XLO`（Y＝edl の x、X＝edl の y。各 `値/32+32`, `値%32+96`, `値/32+32`, `値%32+64`）を省略せず送る。
+点の大きさ `ESC ESC D 0/1/2` は変わるときだけ。点種別印刷（中→小→大、各回の前に `GS` で 20 ステップ上へ）と、
+EBP の縦横比の補正（0/50/100%）を選べる。edlprt の出力と、実物 2 ファイル×2 設定でバイト単位の一致を確認した。
+
+### 3.5 実物ファイルでの確認（edlprt の examples）
+
+- 1ページの .edl すべて：読み→書きでバイト単位で一致
+- zu1.sebk・map.sebk：読み→書きでバイト単位で一致（fumi.data を含む）
+- .ezi から作った点と .edl の点の一致：zu1 578 点中 569、map 567 点中 552、a4-7 431 点中 402。
+  合わない点は、丸める前がちょうど .5 の点（1目盛りのずれ）、用紙の外の点、円弧の点の数が round(L/s)+1 の場合（未解明）
 
 ## 4. 点への変換の手順（出力時）
 

@@ -270,3 +270,71 @@ test('書き出し：SVG と PDF', () => {
   const sx = +pdf.match(/startxref\n(\d+)/)[1]
   assert.equal(pdf.slice(sx, sx + 4), 'xref')
 })
+
+test('ESA721 送信用データ：edlprt と同じバイト列', async () => {
+  const { encodeESA, aspectX } = await import('../js/io/esa.js')
+  // edl の (x=377, y=33) 中点 → ESC ESC G, ESC ESC D 1, YHI YLO XHI XLO, CR FF ESC ESC D 1
+  const { bytes } = encodeESA([[{ ux: 377, uy: 33, k: 2 }]])
+  const want = [27, 27, 71, 27, 27, 68, 49, 377 / 32 + 32 | 0, 377 % 32 + 96, 33 / 32 + 32 | 0, 33 % 32 + 64, 13, 12, 27, 27, 68, 49]
+  assert.deepEqual([...bytes], want)
+  assert.equal(aspectX(100, 100), Math.floor(100 * 1.0571 + 0.5) + 3)
+  // 点種別印刷：中 → 小 → 大、各回の前に GS
+  const bs = encodeESA([[{ ux: 1, uy: 50, k: 3 }, { ux: 2, uy: 40, k: 1 }, { ux: 3, uy: 30, k: 2 }]], { bySize: true }).bytes
+  assert.equal([...bs].filter(b => b === 0x1d).length, 3)
+  const sizes = []; for (let i = 0; i + 3 < bs.length; i++) if (bs[i] === 27 && bs[i + 1] === 27 && bs[i + 2] === 68) sizes.push(bs[i + 3])
+  assert.deepEqual(sizes.slice(0, 3), [49, 48, 50])
+})
+
+test('.edl：同じ座標の点は大きい方を残す・B5 は 684 行まで', () => {
+  const w = writeEDL([{ ux: 5, uy: 5, size: 'S' }, { ux: 5, uy: 5, size: 'L' }, { ux: 5, uy: 700, size: 'M' }])
+  assert.equal(w.text, 'EDELB5,5,5\r\n3@E@E')
+  assert.equal(w.warnings.length, 1)
+  assert.equal(writeEDL([{ ux: 5, uy: 700, size: 'M' }], { area: { x: 479, y: 725 } }).count, 1)
+})
+
+test('記号・周りの点を消す余白・二重線', async () => {
+  const { markerDots } = await import('../js/model.js')
+  const doc = newDocument()
+  const m = { id: 'm', type: 'marker', x: 50, y: 50, shape: 'cross', style: { ...defaultStyle(), dot: 'L', clear: 3 } }
+  assert.equal(markerDots(m).length, 5)
+  const line = { id: 'l', type: 'path', closed: false, points: [[30, 50], [70, 50]], style: defaultStyle() }
+  doc.layers[0].objects.push(line, m)
+  const near = d => d.obj === 'l' && Math.abs(d.x - 50) < 5
+  assert.ok(documentDots(doc, { merge: false, clear: false }).some(near))
+  assert.ok(!documentDots(doc, { merge: false }).some(near), '記号の余白の中の線の点は消える')
+  const dbl = objectDots({ id: 'd', type: 'path', closed: false, points: [[0, 10], [20, 10]], style: { ...defaultStyle(), line: 'double', width: 3 } }, doc)
+  assert.ok(dbl.some(d => Math.abs(d.y - 8.5) < 1e-6) && dbl.some(d => Math.abs(d.y - 11.5) < 1e-6))
+})
+
+test('点図の検査', async () => {
+  const { checkDocument } = await import('../js/check.js')
+  const doc = newDocument()
+  doc.layers[0].objects.push(
+    { id: 'b', type: 'braille', x: 20, y: 20, text: 'あ', style: defaultStyle() },
+    { id: 'l', type: 'path', closed: false, points: [[15, 21], [40, 21]], style: defaultStyle() },
+    { id: 'o', type: 'dots', points: [[195, 250, 'M']], style: defaultStyle() }
+  )
+  const r = checkDocument(doc)
+  const kinds = r.items.map(i => i.kind)
+  assert.ok(kinds.includes('braille'))
+  assert.ok(kinds.includes('outside'))
+  assert.ok(kinds.includes('close'))
+})
+
+// edlprt の実物ファイルがある場合だけ（EDLPRT_EXAMPLES に examples のパス）
+test('実物：edlprt の .edl・.sebk・.ezi', { skip: !process.env.EDLPRT_EXAMPLES }, async () => {
+  const fs = await import('node:fs')
+  const X = process.env.EDLPRT_EXAMPLES + '/'
+  const rd = f => [...fs.readFileSync(X + f)].map(c => String.fromCharCode(c)).join('')
+  for (const f of fs.readdirSync(X).filter(n => n.endsWith('.edl'))) {
+    const t = rd(f); const e = parseEDL(t)
+    if (e.pages.length > 1 || e.dots.some(d => d.side === 'back')) continue
+    assert.equal(writeEDL(e.dots.map(d => ({ ux: d.ux, uy: d.uy, size: d.size })), { paper: e.paper, area: { x: 9999, y: 9999 } }).text, t, f)
+  }
+  for (const f of ['zu1.sebk', 'map.sebk']) {
+    const t = rd(f); const en = parseSEBK(t)
+    assert.equal(writeSEBK(en[0].body, en[1].body, en[0].name.replace(/\.edl$/, '')), t, f)
+    const c = combineEdlEzi(en[0].body, en[1].body)
+    assert.ok(c.stats.shown > 20)
+  }
+})

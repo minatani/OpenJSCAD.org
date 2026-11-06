@@ -29,6 +29,7 @@ export const TOOL_HINTS = {
   filllasso: '囲むようにドラッグした範囲を塗ります。',
   fillpoly: 'クリックで範囲の頂点を置き、ダブルクリックか Enter で塗ります。',
   bucket: '線で囲まれた所をクリックすると、その内側を塗ります。',
+  marker: 'クリックした所に記号（星・十字・四角など）を置きます。記号の周りの点は自動で消えます。',
   arc: '始点・終点・ふくらみの位置の順に3回クリックすると円弧になります。',
   braille: '点字を置きたい場所をクリックします。既存の点字をクリックすると編集します。',
   eraser: 'ドラッグで点を消します（図形は点に変換してから消します）。',
@@ -70,6 +71,15 @@ function hitObject (p) {
     }
   }
   return null
+}
+
+// 点字のマス目（エーデル・ESA721：1マス=15目盛り、1行=33目盛り。行の1の点は行の上から6目盛り）
+export function snapCell (p) {
+  const ux = 0.3454; const uy = 0.3175
+  return [Math.round(p[0] / (15 * ux)) * 15 * ux, Math.round((p[1] - 6 * uy) / (33 * uy)) * 33 * uy + 6 * uy]
+}
+function markerAt (p) {
+  return { type: 'marker', x: p[0], y: p[1], shape: state.markerShape || 'star', style: { ...defaultStyle(), dot: state.markerDot || 'L', clear: state.markerClear != null ? state.markerClear : 3.5 } }
 }
 
 // ---- 各道具の振る舞い
@@ -321,15 +331,45 @@ const tools = {
     down (p) {
       const hit = hitObject(p)
       if (hit && hit.object.type === 'braille') { ui.editBraille(hit.object); return }
-      ui.editBraille(null, snapPt(p))
+      ui.editBraille(null, state.snapCells ? snapCell(p) : snapPt(p))
     }
   },
 
   eraser: {
-    down (p) { drag = { changed: false }; erase(p) },
-    move (p) { if (drag) erase(p); eraserCursor(p) },
-    hover (p) { eraserCursor(p) },
-    up () { if (drag && drag.changed) commit(); drag = null }
+    down (p) {
+      if (state.eraserMode === 'rect') { drag = { rect: true, start: p, cur: p }; return }
+      drag = { changed: false }; erase(p)
+    },
+    move (p) {
+      if (drag && drag.rect) {
+        drag.cur = p
+        const a = drag.start
+        overlay.draw = (c) => strokePath(c, [a, [p[0], a[1]], p, [a[0], p[1]]], true, '#dc2626', [4, 3])
+        requestRender()
+        return
+      }
+      if (drag) erase(p)
+      eraserCursor(p)
+    },
+    hover (p) { if (state.eraserMode !== 'rect') eraserCursor(p) },
+    up (p) {
+      if (drag && drag.rect) {
+        const a = drag.start; drag = null; overlay.draw = null
+        const n = eraseRect(a, p)
+        ui.announce(n ? `範囲の点を ${n} 個消しました。` : '範囲に点はありません。')
+        requestRender()
+        return
+      }
+      if (drag && drag.changed) commit(); drag = null
+    }
+  },
+
+  marker: {
+    down (p) {
+      const hit = hitObject(p)
+      if (hit && hit.object.type === 'marker' && state.tool === 'marker') { state.selection = new Set([hit.object.id]); notify('selection'); return }
+      finishShape(markerAt(snapPt(p)))
+    }
   },
 
   pan: {} // パンは共通処理
@@ -385,26 +425,40 @@ function eraserCursor (p) {
 }
 function erase (p) {
   const r = Math.max(1.5, +state.eraserSize || 3)
+  eraseWhere(q => Math.hypot(q[0] - p[0], q[1] - p[1]) <= r)
+}
+// 条件 inside に当てはまる点を消す（図形は、かかるものだけ点に変換してから消す）
+function eraseWhere (inside) {
+  let n = 0
   for (const l of state.doc.layers) {
     if (!l.visible || l.locked) continue
     for (const o of [...l.objects]) {
       let dots
       if (o.type === 'dots') dots = o.points
       else {
-        // 消しゴムの範囲にかかる図形だけ点に変換する
         const od = objectDots(o, state.doc)
-        if (!od.some(d => Math.hypot(d.x - p[0], d.y - p[1]) <= r)) continue
+        if (!od.some(d => inside([d.x, d.y]))) continue
         dots = od.map(d => [d.x, d.y, d.size])
         if (!state.__eraseWarned) { state.__eraseWarned = true; ui.toast('図形を点に変換して消しています（元に戻すで戻せます）。') }
       }
-      const keep = dots.filter(q => Math.hypot(q[0] - p[0], q[1] - p[1]) > r)
+      const keep = dots.filter(q => !inside(q))
       if (keep.length === dots.length && o.type === 'dots') continue
-      drag.changed = true
+      n += dots.length - keep.length
+      if (drag) drag.changed = true
       if (!keep.length) l.objects = l.objects.filter(x => x.id !== o.id)
       else replaceObject(o.id, { type: 'dots', points: keep, style: o.type === 'dots' ? o.style : { ...defaultStyle() } })
     }
   }
   bumpVersion()
+  return n
+}
+export function eraseRect (a, b) {
+  const x0 = Math.min(a[0], b[0]); const x1 = Math.max(a[0], b[0]); const y0 = Math.min(a[1], b[1]); const y1 = Math.max(a[1], b[1])
+  drag = { changed: false }
+  const n = eraseWhere(q => q[0] >= x0 && q[0] <= x1 && q[1] >= y0 && q[1] <= y1)
+  if (drag.changed) commit()
+  drag = null
+  return n
 }
 
 // ---- 囲まれた所を塗る（塗りつぶし）
@@ -631,7 +685,7 @@ export function setCursor (p) {
 function keyboardPreview () {
   const c = state.cursor
   if (!c) return
-  if (kbAnchor) preview(shapeFromDrag(state.tool, kbAnchor, c, false))
+  if (kbAnchor && state.tool === 'eraser') { const a = kbAnchor; overlay.draw = (cx) => strokePath(cx, [a, [c[0], a[1]], c, [a[0], c[1]]], true, '#dc2626', [4, 3]) } else if (kbAnchor) preview(shapeFromDrag(state.tool, kbAnchor, c, false))
   else if (poly) polyPreview(c)
 }
 export const cursorInfo = () => state.cursor ? describeAt(state.doc, state.cursor, (o, p) => hitTest(o, p, 1.0, state.doc)) : ''
@@ -678,6 +732,16 @@ export function keyboardAction (mode = 'put') {
   }
   if (t === 'bucket') { bucketFill(c); return }
   if (t === 'braille') { tools.braille.down(c); return }
+  if (t === 'marker') { finishShape(markerAt(c)); return }
+  if (t === 'eraser' && state.eraserMode === 'rect') {
+    if (mode === 'back') { kbAnchor = null; overlay.draw = null; requestRender(); return }
+    if (!kbAnchor) { kbAnchor = c; ui.announce(`消す範囲の始点 x ${c[0]} y ${c[1]}。反対の角へ動かして Enter。`); return }
+    const a = kbAnchor; kbAnchor = null; overlay.draw = null
+    const n = eraseRect(a, c)
+    ui.announce(n ? `範囲の点を ${n} 個消しました。` : '範囲に点はありません。')
+    requestRender()
+    return
+  }
   if (t === 'eraser') {
     drag = { changed: false }; erase(c)
     if (drag.changed) { commit(); say('消しました。') } else say('消す点がありません。')

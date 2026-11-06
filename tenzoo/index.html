@@ -26,6 +26,7 @@
     <symbol id="i-lasso" viewBox="0 0 24 24"><path d="M6 17c-4-3-2-11 6-11s9 6 5 9-8 2-9 0" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2 2"/><g fill="currentColor"><circle cx="10" cy="10" r="1"/><circle cx="14" cy="10" r="1"/><circle cx="12" cy="13" r="1"/></g></symbol>
     <symbol id="i-bucket" viewBox="0 0 24 24"><path d="M5 11l7-7 7 7-7 7z" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M19 14c1.5 2 1.5 3.5 0 4.5s-2.5-1-1.5-2.5z" fill="currentColor"/><g fill="currentColor"><circle cx="12" cy="9" r="1"/><circle cx="9.5" cy="11.5" r="1"/><circle cx="14.5" cy="11.5" r="1"/><circle cx="12" cy="14" r="1"/></g></symbol>
     <symbol id="i-braille" viewBox="0 0 24 24"><g fill="currentColor"><circle cx="8" cy="6" r="2"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="16" cy="18" r="2"/></g><g fill="none" stroke="currentColor"><circle cx="16" cy="12" r="1.6"/><circle cx="8" cy="18" r="1.6"/></g></symbol>
+    <symbol id="i-marker" viewBox="0 0 24 24"><g fill="currentColor"><circle cx="12" cy="4" r="2"/><circle cx="20" cy="10" r="2"/><circle cx="17" cy="19" r="2"/><circle cx="7" cy="19" r="2"/><circle cx="4" cy="10" r="2"/></g></symbol>
     <symbol id="i-eraser" viewBox="0 0 24 24"><path d="M4 16l9-9 6 6-6 6H7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 11l5 5" stroke="currentColor" stroke-width="1.8"/></symbol>
     <symbol id="i-pan" viewBox="0 0 24 24"><path d="M12 2v20M2 12h20M12 2l-3 3M12 2l3 3M12 22l-3-3M12 22l3-3M2 12l3-3M2 12l3 3M22 12l-3-3M22 12l-3 3" fill="none" stroke="currentColor" stroke-width="1.6"/></symbol>
     <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 7L4 12l5 5M4 12h11a5 5 0 010 10h-2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" transform="translate(0 -3)"/></symbol>
@@ -75,6 +76,7 @@
     <hr role="separator">
     <button role="menuitem" tabindex="-1" data-cmd="add-numeric">数値を指定して図形を追加…（N）</button>
     <button role="menuitem" tabindex="-1" data-cmd="summary">図の概要を読み上げる（Q）</button>
+    <button role="menuitem" tabindex="-1" data-cmd="check">点図の検査（I）</button>
     <hr role="separator">
     <button role="menuitem" tabindex="-1" data-cmd="import-image">下絵の画像を取り込む…</button>
     <button role="menuitem" tabindex="-1" data-cmd="import-svg">SVG を図形として取り込む…</button>
@@ -103,6 +105,7 @@
       <button data-tool="bucket" title="囲まれた所を塗る (G)" aria-label="囲まれた所を塗る"><svg><use href="#i-bucket"/></svg><span>塗り</span></button>
       <span class="tb-sep"></span>
       <button data-tool="braille" title="点字 (B)" aria-label="点字"><svg><use href="#i-braille"/></svg><span>点字</span></button>
+      <button data-tool="marker" title="記号 (K)" aria-label="記号"><svg><use href="#i-marker"/></svg><span>記号</span></button>
       <button data-tool="eraser" title="消しゴム (X)" aria-label="消しゴム"><svg><use href="#i-eraser"/></svg><span>消す</span></button>
       <button data-tool="pan" title="手のひら（表示の移動） (H / Space)" aria-label="表示の移動"><svg><use href="#i-pan"/></svg><span>移動</span></button>
     </div>

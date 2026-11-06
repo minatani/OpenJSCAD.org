@@ -80,8 +80,9 @@ export function snapToGrid (profile, x, y) {
 // 用紙。EB5 / EA4 はエーデル・ESA721 の「B5」「A4」（点字用紙。ISO の B5・A4 とは別）
 // area: ESA721 で点を打てる範囲（edl 座標の目盛り）。B5 は 32マス×22行、A4 は 40マス×24行
 export const PAPERS = {
-  EB5: { label: '点字用紙 B5（8×10インチ・32マス×22行）', w: 203.2, h: 254, edl: 'B5', area: { x: 479, y: 726 } },
-  EA4: { label: '点字用紙 A4（10×11インチ・40マス×24行）', w: 254, h: 279.4, edl: 'A4', area: { x: 599, y: 790 } },
+  // area.y はエーデルが図を描ける最後の行（B5 は 684。EBP が印刷時に 725 行まで伸ばす）、fullY は ESA721 の最後の行
+  EB5: { label: '点字用紙 B5（8×10インチ・32マス×22行）', w: 203.2, h: 254, edl: 'B5', cols: 32, rows: 22, area: { x: 479, y: 684, fullY: 725 } },
+  EA4: { label: '点字用紙 A4（10×11インチ・40マス×24行）', w: 254, h: 279.4, edl: 'A4', cols: 40, rows: 24, area: { x: 599, y: 790, fullY: 790 } },
   B5: { label: 'B5 縦 (182×257)', w: 182, h: 257 },
   B5L: { label: 'B5 横 (257×182)', w: 257, h: 182 },
   A4: { label: 'A4 縦 (210×297)', w: 210, h: 297 },
@@ -91,9 +92,10 @@ export const PAPERS = {
 }
 
 // エーデル形式で書き出すときの用紙名と点を打てる範囲
-export function edlPaperOf (page) {
+// full=true なら ESA721 の範囲いっぱい（B5 で 725 行）まで使う
+export function edlPaperOf (page, full = false) {
   const p = PAPERS[page && page.paper]
-  if (p && p.edl) return { name: p.edl, area: p.area }
   // 幅で判断（A4 の幅 600 目盛り ≒ 207mm を超えるなら A4）
-  return page && page.width > 203.3 ? { name: 'A4', area: PAPERS.EA4.area } : { name: 'B5', area: PAPERS.EB5.area }
+  const q = p && p.edl ? p : (page && page.width > 203.3 ? PAPERS.EA4 : PAPERS.EB5)
+  return { name: q.edl, area: { x: q.area.x, y: full ? q.area.fullY : q.area.y }, cols: q.cols, rows: q.rows }
 }

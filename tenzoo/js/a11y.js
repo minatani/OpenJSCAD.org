@@ -7,12 +7,14 @@ import { polylineLength } from './geometry.js'
 
 export const TYPE_NAMES = {
   dots: '点', path: '折れ線', curve: '曲線', freehand: '手描きの線', rect: '四角形', ellipse: '楕円', arc: '円弧',
-  braille: '点字', mask: '塗りつぶした範囲'
+  braille: '点字', mask: '塗りつぶした範囲', marker: '記号'
 }
 const n1 = v => (Math.round(v * 10) / 10).toString()
 const SIZE = s => (DOT_SIZES[s] || DOT_SIZES.M).label
 
+const MARKER_NAMES = { star: '星', cross: '十字', square: '四角', diamond: 'ひし形', circle: '丸', triangle: '三角', dot: '1点' }
 export function typeName (o) {
+  if (o.type === 'marker') return `記号（${MARKER_NAMES[o.shape] || o.shape}）`
   if (o.type === 'path') {
     if (o.points.length === 2 && !o.closed) return '直線'
     if (o.closed) return o.points.length === 3 ? '三角形' : `${o.points.length}角形`
@@ -28,6 +30,7 @@ export function describeObject (o, doc, { detail = true } = {}) {
   const st = o.style || {}
   switch (o.type) {
     case 'dots': parts.push(`${o.points.length} 個`); break
+    case 'marker': parts.push(`中心 x ${n1(o.x)} y ${n1(o.y)}`, SIZE(st.dot || 'L')); if (st.clear) parts.push(`周りの余白 ${n1(st.clear)}mm`); break
     case 'braille': {
       const kana = o.text || brailleToKana(brailleCells(o))
       parts.push(`「${kana.replace(/\n/g, ' ')}」`, `左上 x ${n1(o.x)} y ${n1(o.y)}`)
@@ -57,6 +60,7 @@ export function describeObject (o, doc, { detail = true } = {}) {
       parts.push(`${SIZE(st.dot)}、間隔 ${n1(+st.spacing || 2)}mm`)
       if (st.line === 'dashed') parts.push('破線')
       if (st.line === 'dotted') parts.push('点線')
+      if (st.line === 'double') parts.push(`二重線（幅 ${n1(+st.width || 2.8)}mm）`)
       if (st.arrow && st.arrow !== 'none') parts.push({ end: '終点に矢印', start: '始点に矢印', both: '両端に矢印' }[st.arrow])
     }
   }
